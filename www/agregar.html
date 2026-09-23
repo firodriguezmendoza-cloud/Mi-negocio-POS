@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<!-- =========================================================
+     BLOQUE DE SEGURIDAD "SOLO ADMINISTRADOR"
+     Versión actualizada: ahora respeta la configuración de
+     "Módulos Bloqueados" definida en Gestión de Usuarios.
+     ========================================================= -->
+
+<div id="modalSeguridadAdmin" style="position:fixed; top:0; left:0; width:100%; height:100%; background:#0f172a; z-index:999999; display:flex; align-items:center; justify-content:center; font-family:sans-serif;">
+  <div style="background:white; padding:24px; border-radius:16px; width:85%; max-width:300px; text-align:center; box-shadow:0 10px 25px rgba(0,0,0,0.5);">
+    <div style="font-size:32px; margin-bottom:8px;">🔐</div>
+    <h3 style="margin:0 0 6px 0; font-size:16px; color:#1e293b;">Área Exclusiva de Administrador</h3>
+    <p style="margin:0 0 14px 0; font-size:11px; color:#64748b;">Los cajeros no tienen acceso a este menú. Ingresa tu PIN de Administrador.</p>
+    <input type="password" id="inputPinAdmin" placeholder="••••" maxlength="6" style="width:100%; padding:12px; font-size:22px; text-align:center; border:1px solid #cbd5e1; border-radius:10px; margin-bottom:12px; box-sizing:border-box; letter-spacing:6px;" />
+    <button onclick="verificarSoloAdmin()" style="width:100%; background:#7c3aed; color:white; border:none; padding:12px; border-radius:10px; font-weight:bold; font-size:13px; cursor:pointer;">Verificar Acceso</button>
+  </div>
+</div>
+
+<script>
+  // ⚠️ CAMBIA ESTE VALOR EN CADA MÓDULO (ver lista arriba)
+  var NOMBRE_MODULO_SEGURIDAD = 'agregarProductos';
+
+  function moduloRequierePinAdmin() {
+    var datos = localStorage.getItem('pos_db_modulos_bloqueados');
+    if (!datos) return true;
+    try {
+      var config = JSON.parse(datos);
+      if (!config || typeof config !== 'object' || Array.isArray(config)) return true;
+      return config[NOMBRE_MODULO_SEGURIDAD] !== false;
+    } catch (e) {
+      return true;
+    }
+  }
+
+  window.addEventListener('DOMContentLoaded', () => {
+    const datosUsuarios = localStorage.getItem('pos_db_users');
+    if (!datosUsuarios) {
+      document.getElementById('modalSeguridadAdmin').style.display = 'none';
+      return;
+    }
+
+    try {
+      const usuarios = JSON.parse(datosUsuarios);
+      const existeAdmin = Array.isArray(usuarios) && usuarios.some(u => u.rol === 'administrador');
+      if (!existeAdmin || !moduloRequierePinAdmin()) {
+        document.getElementById('modalSeguridadAdmin').style.display = 'none';
+      }
+    } catch (e) {
+      document.getElementById('modalSeguridadAdmin').style.display = 'none';
+    }
+  });
+
+  function verificarSoloAdmin() {
+    const pinIngresado = document.getElementById('inputPinAdmin').value.trim();
+    const datosUsuarios = localStorage.getItem('pos_db_users');
+
+    if (!datosUsuarios) {
+      document.getElementById('modalSeguridadAdmin').style.display = 'none';
+      return;
+    }
+
+    const usuarios = JSON.parse(datosUsuarios);
+    const existeAdmin = usuarios.some(u => u.rol === 'administrador');
+
+    if (!existeAdmin || !moduloRequierePinAdmin()) {
+      document.getElementById('modalSeguridadAdmin').style.display = 'none';
+      return;
+    }
+
+    const usuarioValido = usuarios.find(u => String(u.pin) === String(pinIngresado) && u.rol === 'administrador');
+
+    if (usuarioValido) {
+      document.getElementById('modalSeguridadAdmin').style.display = 'none';
+    } else {
+      alert("⛔ Acceso denegado. Este menú está restringido únicamente a Administradores.");
+      document.getElementById('inputPinAdmin').value = "";
+    }
+  }
+</script>
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Agregar Productos</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Iconos -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Lector de Código de Barras HTML5 -->
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <style>
+    input, select, textarea { font-size: 16px !important; }
+
+    /* NUEVO: línea roja animada del lector de código de barras */
+    .gp-scanner-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .gp-scanner-line-wrap {
+      position: relative;
+      width: 280px;
+      max-width: 78%;
+      height: 140px;
+    }
+
+    .gp-scanner-line {
+      position: absolute;
+      left: 0;
+      top: 4%;
+      width: 100%;
+      height: 2px;
+      border-radius: 2px;
+      background: #ef4444;
+      box-shadow: 0 0 8px 2px rgba(239, 68, 68, 0.85);
+      animation: gp-scan-move 1.8s ease-in-out infinite;
+    }
+
+    @keyframes gp-scan-move {
+      0%   { top: 4%; }
+      50%  { top: 92%; }
+      100% { top: 4%; }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen pb-12">
+
+  <!-- ENCABEZADO -->
+  <header class="bg-slate-900 text-white p-4 sticky top-0 z-30 shadow-md">
+    <div class="max-w-xl mx-auto flex items-center gap-2">
+      <i class="fa-solid fa-square-plus text-xl text-emerald-400"></i>
+      <h1 class="font-bold text-lg">Agregar Productos</h1>
+    </div>
+  </header>
+
+  <main class="max-w-xl mx-auto p-4 space-y-4">
+
+    <!-- FORMULARIO DE REGISTRO DE PRODUCTO -->
+    <section class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+      <div class="flex justify-between items-center border-b pb-2">
+        <h2 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+          <i class="fa-solid fa-box-open text-emerald-600"></i> Datos del Producto
+        </h2>
+        <span id="lblModo" class="text-[11px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">Nuevo</span>
+      </div>
+
+      <form id="formProducto" onsubmit="guardarProducto(event)" class="space-y-3">
+        <input type="hidden" id="prodId">
+
+        <!-- 1. CÓDIGO DE BARRAS Y ESCÁNER -->
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">1. Código de Barras / Clave</label>
+          <div class="flex gap-2">
+            <div class="relative flex-1">
+              <i class="fa-solid fa-barcode absolute left-3 top-3 text-slate-400"></i>
+              <input type="text" id="inputCodigo" placeholder="Escribe o escanea..." required
+                     inputmode="numeric" pattern="[0-9]*" oninput="sanitizarCodigoSoloNumeros(this)"
+                     class="w-full bg-slate-50 border border-slate-300 rounded-xl py-2.5 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono">
+            </div>
+            <button type="button" onclick="abrirCamaraScanner()" class="bg-slate-800 hover:bg-slate-700 text-white px-4 rounded-xl flex items-center justify-center active:scale-95 shadow">
+              <i class="fa-solid fa-barcode text-base text-amber-400"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. NOMBRE DEL PRODUCTO -->
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">2. Nombre del Producto</label>
+          <input type="text" id="inputNombre" placeholder="Ej. Producto 1" required
+                 class="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+        </div>
+
+        <!-- CATEGORÍA -->
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">Categoría</label>
+          <input type="text" id="inputCategoria" placeholder="Ej. General"
+                 class="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+        </div>
+
+        <!-- 3. PRECIO DE VENTA Y COSTO -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">3. Precio Venta ($)</label>
+            <input type="number" step="any" min="0" id="inputPrecio" placeholder="0.00" required
+                   class="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-sm font-black text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">Precio Costo ($)</label>
+            <input type="number" step="any" min="0" id="inputCosto" placeholder="0.00"
+                   class="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-sm font-bold text-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+          </div>
+        </div>
+
+        <!-- 4. UNIDAD DE MEDIDA Y STOCK INICIAL -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">4. Unidad de Medida</label>
+            <select id="selectUnidad" onchange="ajustarPasoStock()" class="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium">
+              <option value="pz">Pieza (pz)</option>
+              <option value="kg">Kilogramo (kg)</option>
+              <option value="g">Gramos (g)</option>
+              <option value="L">Litro (L)</option>
+              <option value="m">Metro (m)</option>
+              <option value="paq">Paquete (paq)</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">Stock Inicial</label>
+            <input type="number" step="any" min="0" id="inputStock" placeholder="0" required
+                   class="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+          </div>
+        </div>
+
+        <!-- NUEVO: Stock Mínimo, usado por Inventario para las alertas de stock bajo -->
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">Stock Mínimo (alerta de stock bajo)</label>
+          <input type="number" step="any" min="0" id="inputStockMinimo" placeholder="0"
+                 class="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-sm font-bold text-amber-700 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+        </div>
+
+        <!-- 5. FOTOGRAFÍA DEL PRODUCTO -->
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">5. Imagen del Producto (Opcional)</label>
+          <div class="flex items-center gap-3 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+            <div id="imgContainer" class="w-16 h-16 bg-slate-200 rounded-lg border flex items-center justify-center overflow-hidden shrink-0 relative">
+              <i id="imgPlaceholder" class="fa-solid fa-image text-slate-400 text-2xl"></i>
+              <img id="imgPreview" src="" class="hidden w-full h-full object-cover">
+            </div>
+
+            <div class="flex-1 space-y-1.5">
+              <div class="grid grid-cols-2 gap-1.5">
+                <button type="button" onclick="abrirCamaraFoto()" 
+                        class="bg-slate-800 hover:bg-slate-700 text-white text-[11px] font-bold py-2.5 px-2 rounded-lg flex items-center justify-center gap-1 shadow active:scale-95">
+                  <i class="fa-solid fa-camera text-amber-400"></i>
+                  <span>Cámara</span>
+                </button>
+
+                <label for="inputGaleria" 
+                       class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-[11px] font-bold py-2.5 px-2 rounded-lg flex items-center justify-center gap-1 active:scale-95 cursor-pointer">
+                  <i class="fa-solid fa-images text-slate-600"></i>
+                  <span>Galería</span>
+                </label>
+                <input type="file" id="inputGaleria" accept="image/*" onchange="procesarImagenProducto(event)" class="hidden">
+              </div>
+
+              <button type="button" onclick="quitarFotoProducto()" id="btnQuitarFoto" class="hidden text-red-500 hover:underline text-[10px] font-bold">
+                <i class="fa-solid fa-trash-can mr-0.5"></i> Eliminar fotografía
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- BOTONES DE ACCIÓN -->
+        <div class="flex gap-2 pt-2">
+          <button type="button" onclick="limpiarFormulario()" id="btnCancelar" class="hidden w-1/3 bg-slate-200 text-slate-700 py-3 rounded-xl font-bold text-xs">
+            Cancelar
+          </button>
+          <button type="submit" id="btnGuardar" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-md active:scale-98 transition flex items-center justify-center gap-2 text-sm">
+            <i class="fa-solid fa-floppy-disk"></i>
+            <span>GUARDAR PRODUCTO</span>
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <!-- LISTA DE ÚLTIMOS PRODUCTOS REGISTRADOS -->
+    <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-3">
+      <div class="flex justify-between items-center border-b pb-2">
+        <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+          <i class="fa-solid fa-list-check text-slate-600"></i> Registrados Recientemente
+        </h3>
+        <span id="txtTotalProductos" class="text-xs text-slate-500 font-semibold">0 productos</span>
+      </div>
+
+      <!-- NUEVO: buscador por nombre/código + filtro por categoría -->
+      <div class="flex gap-2">
+        <div class="relative flex-1">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-3 text-slate-400 text-xs"></i>
+          <input type="text" id="inputBuscarProducto" oninput="renderizarListaRecientes()" placeholder="Buscar por nombre o código..."
+                 class="w-full bg-slate-50 border border-slate-300 rounded-xl py-2.5 pl-8 pr-3 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500">
+        </div>
+        <select id="selectFiltroCategoria" onchange="renderizarListaRecientes()"
+                class="bg-slate-50 border border-slate-300 rounded-xl px-2 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+          <option value="">Todas las categorías</option>
+        </select>
+      </div>
+
+      <div id="listaRecientes" class="space-y-2 max-h-60 overflow-y-auto pr-1"></div>
+    </section>
+
+  </main>
+
+  <!-- MODAL CÁMARA TRASERA PARA TOMAR FOTO -->
+  <div id="fotoModal" class="fixed inset-0 bg-black/90 z-50 hidden flex-col items-center justify-center p-4">
+    <div class="bg-slate-900 text-white rounded-2xl p-4 w-full max-w-sm text-center relative shadow-xl space-y-3 border border-slate-700">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+        <h3 class="font-bold text-sm flex items-center gap-2 text-amber-400">
+          <i class="fa-solid fa-camera"></i> Fotografía del Producto
+        </h3>
+        <button type="button" onclick="cerrarCamaraFoto()" class="text-slate-400 hover:text-white">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div class="relative w-full h-64 bg-black rounded-xl overflow-hidden border border-slate-800">
+        <video id="videoFoto" autoplay playsinline class="w-full h-full object-cover"></video>
+      </div>
+<div class="grid grid-cols-2 gap-2 pt-1">
+        <button type="button" onclick="cerrarCamaraFoto()" class="bg-slate-800 text-slate-300 py-2.5 rounded-xl font-bold text-xs">
+          Cancelar
+        </button>
+        <button type="button" onclick="capturarFoto()" class="bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow">
+          <i class="fa-solid fa-circle-dot"></i>
+          <span>Tomar Foto</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL ESCÁNER CÓDIGO DE BARRAS -->
+  <div id="scannerModal" class="fixed inset-0 bg-black/80 z-50 hidden flex-col items-center justify-center p-4">
+    <div class="bg-white rounded-2xl p-4 w-full max-w-sm text-center relative shadow-xl">
+      <h3 class="font-bold text-slate-800 mb-2 text-sm">Escanea el código del producto</h3>
+      <div class="relative w-full rounded-lg overflow-hidden bg-black">
+        <div id="reader" class="w-full"></div>
+        <div class="gp-scanner-overlay">
+          <div class="gp-scanner-line-wrap">
+            <div class="gp-scanner-line"></div>
+          </div>
+        </div>
+      </div>
+      <p class="text-[11px] text-slate-500 mt-2">Coloca el código de barras dentro del recuadro</p>
+      <button type="button" onclick="cerrarCamaraScanner()" class="mt-3 bg-slate-200 text-slate-700 w-full py-2.5 rounded-xl font-bold text-xs">
+        Cancelar / Cerrar
+      </button>
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT -->
+  <script>
+    const DB_KEY = 'pos_db_products';
+    const DB_VENTAS_KEY = 'pos_db_ventas';
+    const DB_KARDEX_KEY = 'pos_db_kardex';
+    let productos = [];
+    let html5QrcodeScanner = null;
+    let streamFoto = null;
+
+    document.addEventListener("DOMContentLoaded", () => {
+      cargarProductos();
+    });
+
+    // NUEVO: registra un movimiento en el kárdex compartido
+    function registrarMovimientoKardex(mov) {
+      try {
+        const historial = JSON.parse(localStorage.getItem(DB_KARDEX_KEY) || '[]');
+        historial.unshift({
+          id: Date.now() + '_' + Math.random().toString(36).substring(2, 8),
+          fecha: new Date().toISOString(),
+          ...mov
+        });
+        localStorage.setItem(DB_KARDEX_KEY, JSON.stringify(historial));
+      } catch (e) {}
+    }
+
+    function cargarProductos() {
+      const data = localStorage.getItem(DB_KEY);
+      productos = data ? JSON.parse(data) : [];
+      poblarFiltroCategorias();
+      renderizarListaRecientes();
+    }
+
+    // NUEVO: solo permite dígitos en el campo de código de barras
+    function sanitizarCodigoSoloNumeros(input) {
+      const valorLimpio = input.value.replace(/[^0-9]/g, '');
+      if (valorLimpio !== input.value) {
+        input.value = valorLimpio;
+      }
+    }
+
+    // NUEVO: llena el filtro de categorías con las categorías que ya existen
+    function poblarFiltroCategorias() {
+      const select = document.getElementById('selectFiltroCategoria');
+      if (!select) return;
+
+      const valorActual = select.value;
+
+      const categorias = Array.from(
+        new Set(
+          productos
+            .map(p => (p.categoria || '').trim())
+            .filter(c => c !== '')
+        )
+      ).sort((a, b) => a.localeCompare(b));
+
+      select.innerHTML = '<option value="">Todas las categorías</option>' +
+        categorias.map(c => `<option value="${c}">${c}</option>`).join('');
+
+      if (categorias.includes(valorActual)) {
+        select.value = valorActual;
+      }
+    }
+
+    // 1. CÁMARA TRASERA EN VIVO (WEBRTC) PARA FOTO DE PRODUCTO
+    async function abrirCamaraFoto() {
+      const modal = document.getElementById('fotoModal');
+      const video = document.getElementById('videoFoto');
+
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+
+      try {
+        streamFoto = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }
+        });
+        video.srcObject = streamFoto;
+        await video.play();
+      } catch (err) {
+        console.error("Error al acceder a la cámara:", err);
+        alert("⚠️ No se pudo acceder a la cámara trasera. Por favor autoriza los permisos de cámara en tu teléfono.");
+        cerrarCamaraFoto();
+      }
+    }
+
+    function capturarFoto() {
+      const video = document.getElementById('videoFoto');
+      if (!video || !streamFoto) return;
+
+      const canvas = document.createElement('canvas');
+      const MAX_SIZE = 400;
+      let width = video.videoWidth || 640;
+      let height = video.videoHeight || 480;
+
+      if (width > height) {
+        if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
+      } else {
+        if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, width, height);
+
+      const base64 = canvas.toDataURL('image/jpeg', 0.85);
+
+      document.getElementById('imgPreview').src = base64;
+      document.getElementById('imgPreview').classList.remove('hidden');
+      document.getElementById('imgPlaceholder').classList.add('hidden');
+      document.getElementById('btnQuitarFoto').classList.remove('hidden');
+
+      cerrarCamaraFoto();
+    }
+
+    function cerrarCamaraFoto() {
+      if (streamFoto) {
+        streamFoto.getTracks().forEach(track => track.stop());
+        streamFoto = null;
+      }
+      const video = document.getElementById('videoFoto');
+      if (video) video.srcObject = null;
+
+      const modal = document.getElementById('fotoModal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    // 2. GALERÍA DE FOTOS
+    function procesarImagenProducto(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.createElement('canvas');
+          const MAX_SIZE = 300;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
+          } else {
+            if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          const base64 = canvas.toDataURL('image/jpeg', 0.8);
+          document.getElementById('imgPreview').src = base64;
+          document.getElementById('imgPreview').classList.remove('hidden');
+          document.getElementById('imgPlaceholder').classList.add('hidden');
+          document.getElementById('btnQuitarFoto').classList.remove('hidden');
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function quitarFotoProducto() {
+      document.getElementById('inputGaleria').value = '';
+      document.getElementById('imgPreview').src = '';
+      document.getElementById('imgPreview').classList.add('hidden');
+      document.getElementById('imgPlaceholder').classList.remove('hidden');
+      document.getElementById('btnQuitarFoto').classList.add('hidden');
+    }
+
+    // 3. GUARDAR O EDITAR PRODUCTO
+    function guardarProducto(e) {
+      e.preventDefault();
+
+      const id = document.getElementById('prodId').value;
+      const codigo = document.getElementById('inputCodigo').value.trim();
+      const nombre = document.getElementById('inputNombre').value.trim();
+      const categoria = document.getElementById('inputCategoria').value.trim();
+      const unidad = document.getElementById('selectUnidad').value;
+      const stock = parseFloat(document.getElementById('inputStock').value) || 0;
+      const stockMinimo = parseFloat(document.getElementById('inputStockMinimo').value) || 0;
+      const precio = parseFloat(document.getElementById('inputPrecio').value) || 0;
+      const costo = parseFloat(document.getElementById('inputCosto').value) || 0;
+      const imagen = document.getElementById('imgPreview').src || '';
+
+      if (!codigo || !nombre || precio <= 0) {
+        alert("⚠️ Por favor completa el código, nombre y un precio válido.");
+        return;
+      }
+
+      cargarProductos();
+
+      // NUEVO: no permitir nombres duplicados (excluye el producto que se está editando)
+      const existeNombre = productos.some(p =>
+        p.nombre.trim().toLowerCase() === nombre.toLowerCase() &&
+        String(p.id) !== String(id)
+      );
+
+      if (existeNombre) {
+        alert(`⚠️ Ya existe un producto registrado con el nombre "${nombre}".`);
+        return;
+      }
+
+      if (id) {
+        // EDICIÓN
+        const index = productos.findIndex(p => String(p.id) === String(id));
+        if (index !== -1) {
+          // NUEVO: si el stock cambió al editar, se registra el ajuste en el kárdex
+          const stockAnterior = parseFloat(productos[index].stock) || 0;
+          const diferenciaStock = stock - stockAnterior;
+
+          productos[index] = { ...productos[index], codigo, nombre, categoria, unidad, stock, stockMinimo, precio, costo, imagen };
+
+          if (diferenciaStock !== 0) {
+            registrarMovimientoKardex({
+              productoId: productos[index].id,
+              productoNombre: nombre,
+              tipo: diferenciaStock > 0 ? 'entrada' : 'salida',
+              cantidad: Math.abs(diferenciaStock),
+              motivo: 'Ajuste manual',
+              origen: 'agregar_productos',
+              referencia: ''
+            });
+          }
+
+          alert("✅ Producto actualizado correctamente.");
+        }
+      } else {
+        // NUEVO REGISTRO
+        const existeCodigo = productos.some(p => String(p.codigo).toLowerCase() === codigo.toLowerCase());
+        if (existeCodigo) {
+          alert(`⚠️ Ya existe un producto registrado con el código: ${codigo}`);
+          return;
+        }
+
+        const nuevoProducto = {
+          id: Date.now(),
+          codigo: codigo,
+          nombre: nombre,
+          categoria: categoria,
+          unidad: unidad,
+          stock: stock,
+          stockMinimo: stockMinimo,
+          precio: precio,
+          costo: costo,
+          imagen: imagen,
+          activo: true
+        };
+
+        productos.unshift(nuevoProducto);
+
+        // NUEVO: registrar el alta inicial en el kárdex
+        if (stock > 0) {
+          registrarMovimientoKardex({
+            productoId: nuevoProducto.id,
+            productoNombre: nombre,
+            tipo: 'entrada',
+            cantidad: stock,
+            motivo: 'Alta inicial',
+            origen: 'agregar_productos',
+            referencia: ''
+          });
+        }
+
+        alert("✅ Producto agregado con éxito.");
+      }
+
+      localStorage.setItem(DB_KEY, JSON.stringify(productos));
+      limpiarFormulario();
+      cargarProductos();
+    }
+
+    function editarProducto(prodId) {
+      const prod = productos.find(p => String(p.id) === String(prodId));
+      if (!prod) return;
+
+      document.getElementById('prodId').value = prod.id;
+      document.getElementById('inputCodigo').value = prod.codigo;
+      document.getElementById('inputNombre').value = prod.nombre;
+      document.getElementById('inputCategoria').value = prod.categoria || '';
+      document.getElementById('selectUnidad').value = prod.unidad || 'pz';
+      document.getElementById('inputStock').value = prod.stock;
+      document.getElementById('inputStockMinimo').value = prod.stockMinimo || 0;
+      document.getElementById('inputPrecio').value = prod.precio;
+      document.getElementById('inputCosto').value = prod.costo || 0;
+
+      if (prod.imagen && prod.imagen.startsWith('data:image')) {
+        document.getElementById('imgPreview').src = prod.imagen;
+        document.getElementById('imgPreview').classList.remove('hidden');
+        document.getElementById('imgPlaceholder').classList.add('hidden');
+        document.getElementById('btnQuitarFoto').classList.remove('hidden');
+      } else {
+        quitarFotoProducto();
+      }
+
+      document.getElementById('lblModo').innerText = "Editando";
+      document.getElementById('lblModo').className = "text-[11px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full";
+      document.getElementById('btnCancelar').classList.remove('hidden');
+      document.getElementById('btnGuardar').className = "w-2/3 bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 rounded-xl shadow-md active:scale-98 transition flex items-center justify-center gap-2 text-sm";
+      document.getElementById('btnGuardar').innerHTML = `<i class="fa-solid fa-pen-to-square"></i> ACTUALIZAR`;
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // NUEVO: ¿este producto aparece en alguna venta registrada?
+    function productoTieneVentas(prodId) {
+      const historial = JSON.parse(localStorage.getItem(DB_VENTAS_KEY) || '[]');
+      return historial.some(venta =>
+        Array.isArray(venta.items) &&
+        venta.items.some(item => String(item.id) === String(prodId))
+      );
+    }
+
+    // NUEVO: reemplaza el "Eliminar" simple.
+    // - Si el producto ya tiene ventas registradas -> se Archiva/Inactiva
+    //   (desaparece de Caja, pero se conserva el historial).
+    // - Si nunca se ha vendido -> sí se permite eliminar físicamente.
+    function archivarOEliminarProducto(prodId) {
+      const prod = productos.find(p => String(p.id) === String(prodId));
+      if (!prod) return;
+
+      if (productoTieneVentas(prodId)) {
+        if (confirm(`"${prod.nombre}" ya tiene ventas registradas.\n\nPor seguridad no se puede eliminar (se perdería el historial). Se marcará como INACTIVO y dejará de aparecer en Caja.\n\n¿Continuar?`)) {
+          prod.activo = false;
+          localStorage.setItem(DB_KEY, JSON.stringify(productos));
+          cargarProductos();
+        }
+        return;
+      }
+
+      if (confirm(`"${prod.nombre}" no tiene ventas registradas. ¿Deseas eliminarlo definitivamente? Esta acción no se puede deshacer.`)) {
+        productos = productos.filter(p => String(p.id) !== String(prodId));
+        localStorage.setItem(DB_KEY, JSON.stringify(productos));
+        cargarProductos();
+        limpiarFormulario();
+      }
+    }
+
+    // NUEVO: revierte un producto Inactivo a Activo (vuelve a aparecer en Caja)
+    function reactivarProducto(prodId) {
+      const prod = productos.find(p => String(p.id) === String(prodId));
+      if (!prod) return;
+
+      prod.activo = true;
+      localStorage.setItem(DB_KEY, JSON.stringify(productos));
+      cargarProductos();
+    }
+
+    function limpiarFormulario() {
+      document.getElementById('formProducto').reset();
+      document.getElementById('prodId').value = '';
+      quitarFotoProducto();
+      document.getElementById('lblModo').innerText = "Nuevo";
+      document.getElementById('lblModo').className = "text-[11px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full";
+      document.getElementById('btnCancelar').classList.add('hidden');
+      document.getElementById('btnGuardar').className = "w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-md active:scale-98 transition flex items-center justify-center gap-2 text-sm";
+      document.getElementById('btnGuardar').innerHTML = `<i class="fa-solid fa-floppy-disk"></i> GUARDAR PRODUCTO`;
+    }
+
+    function renderizarListaRecientes() {
+      const contenedor = document.getElementById('listaRecientes');
+      const txtTotal = document.getElementById('txtTotalProductos');
+
+      // NUEVO: aplicar búsqueda por nombre/código + filtro por categoría
+      const textoBusqueda = (document.getElementById('inputBuscarProducto')?.value || '').trim().toLowerCase();
+      const categoriaFiltro = document.getElementById('selectFiltroCategoria')?.value || '';
+
+      let listaFiltrada = productos;
+
+      if (textoBusqueda) {
+        listaFiltrada = listaFiltrada.filter(p =>
+          String(p.nombre).toLowerCase().includes(textoBusqueda) ||
+          String(p.codigo).toLowerCase().includes(textoBusqueda)
+        );
+      }
+
+      if (categoriaFiltro) {
+        listaFiltrada = listaFiltrada.filter(p => (p.categoria || '') === categoriaFiltro);
+      }
+
+      contenedor.innerHTML = '';
+      txtTotal.innerText = `${productos.length} producto${productos.length === 1 ? '' : 's'}`;
+
+      if (productos.length === 0) {
+        contenedor.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">No hay productos registrados aún.</p>`;
+        return;
+      }
+
+      if (listaFiltrada.length === 0) {
+        contenedor.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">No se encontraron productos con ese filtro.</p>`;
+        return;
+      }
+
+      // Con búsqueda o filtro activo se muestran todos los resultados;
+      // sin filtro, se mantiene el comportamiento original (solo los 10 más recientes)
+      const hayFiltroActivo = textoBusqueda || categoriaFiltro;
+      const listaAMostrar = hayFiltroActivo ? listaFiltrada : listaFiltrada.slice(0, 10);
+
+      listaAMostrar.forEach(p => {
+        const activo = p.activo !== false;
+
+        const div = document.createElement('div');
+        div.className = "flex items-center justify-between bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-xs" + (activo ? '' : ' opacity-60');
+        
+        let imgHtml = `<div class="w-10 h-10 bg-slate-200 rounded-lg flex items-center justify-center shrink-0 text-slate-400"><i class="fa-solid fa-box"></i></div>`;
+        if (p.imagen && p.imagen.startsWith('data:image')) {
+          imgHtml = `<div class="w-10 h-10 rounded-lg overflow-hidden shrink-0 border border-slate-200"><img src="${p.imagen}" class="w-full h-full object-cover"></div>`;
+        }
+
+        const badgeInactivo = activo ? '' : `<span class="bg-slate-300 text-slate-700 text-[9px] font-bold px-1.5 py-0.5 rounded-full ml-1">INACTIVO</span>`;
+
+        const botonesAccion = activo
+          ? `
+            <button type="button" onclick="editarProducto('${p.id}')" class="bg-amber-100 hover:bg-amber-200 text-amber-800 p-2 rounded-lg">
+              <i class="fa-solid fa-pen"></i>
+            </button>
+            <button type="button" onclick="archivarOEliminarProducto('${p.id}')" class="bg-red-100 hover:bg-red-200 text-red-700 p-2 rounded-lg">
+              <i class="fa-solid fa-box-archive"></i>
+            </button>
+          `
+          : `
+            <button type="button" onclick="reactivarProducto('${p.id}')" class="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 p-2 rounded-lg" title="Reactivar">
+              <i class="fa-solid fa-rotate-left"></i>
+            </button>
+          `;
+
+        div.innerHTML = `
+          <div class="flex items-center gap-2.5 overflow-hidden">
+            ${imgHtml}
+            <div class="truncate">
+              <p class="font-bold text-slate-800 truncate">${p.nombre}${badgeInactivo}</p>
+              <p class="text-[10px] text-slate-500 font-mono">${p.codigo} ${p.categoria ? '• ' + p.categoria : ''}</p>
+              <p class="text-[10px] text-emerald-600 font-bold">Stock: ${p.stock} ${p.unidad || 'pz'} | Venta: $${Number(p.precio).toFixed(2)}</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-1 shrink-0">
+            ${botonesAccion}
+          </div>
+        `;
+        contenedor.appendChild(div);
+      });
+    }
+
+    // CÁMARA ESCÁNER CÓDIGO DE BARRAS
+    function abrirCamaraScanner() {
+      const modal = document.getElementById('scannerModal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+
+      // NUEVO: se limita a los formatos de código de barras usados en
+      // retail (más rápido que escanear todos los formatos posibles),
+      // y se activa el detector nativo del navegador cuando esté
+      // disponible (mucho más rápido y preciso que el lector en JS).
+      html5QrcodeScanner = new Html5Qrcode("reader", {
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.CODABAR,
+          Html5QrcodeSupportedFormats.ITF,
+          Html5QrcodeSupportedFormats.QR_CODE
+        ],
+        useBarCodeDetectorIfSupported: true,
+        verbose: false
+      });
+
+      html5QrcodeScanner.start(
+        {
+          facingMode: "environment"
+        },
+        {
+          fps: 20,
+          qrbox: { width: 280, height: 140 },
+          aspectRatio: 1.7777778
+        },
+        (decodedText) => {
+          document.getElementById('inputCodigo').value = decodedText.replace(/[^0-9]/g, '');
+          cerrarCamaraScanner();
+        },
+        (error) => {}
+      ).then(() => {
+        // NUEVO: intento silencioso de activar enfoque continuo,
+        // DESPUÉS de que la cámara ya abrió. Si el dispositivo no lo
+        // soporta, no pasa nada (no rompe el escaneo).
+        try {
+          const video = document.querySelector('#reader video');
+          const track = video && video.srcObject ? video.srcObject.getVideoTracks()[0] : null;
+          if (track && typeof track.applyConstraints === 'function') {
+            track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+          }
+        } catch (e) {}
+      }).catch(err => {
+        alert("⚠️ No se pudo iniciar la cámara para escanear el código.");
+        cerrarCamaraScanner();
+      });
+    }
+
+    function cerrarCamaraScanner() {
+      if (html5QrcodeScanner) {
+        html5QrcodeScanner.stop().then(() => {
+          html5QrcodeScanner.clear();
+          html5QrcodeScanner = null;
+        }).catch(err => console.log(err));
+      }
+      const modal = document.getElementById('scannerModal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    function ajustarPasoStock() {
+      // Opcional por si se requiere ajustar unidades
+    }
+  </script>
+</body>
+</html>

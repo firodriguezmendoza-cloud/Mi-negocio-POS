@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<!-- =========================================================
+     BLOQUE DE SEGURIDAD "SOLO ADMINISTRADOR"
+     ========================================================= -->
+
+<div id="modalSeguridadAdmin" style="position:fixed; top:0; left:0; width:100%; height:100%; background:#0f172a; z-index:999999; display:flex; align-items:center; justify-content:center; font-family:sans-serif;">
+  <div style="background:white; padding:24px; border-radius:16px; width:85%; max-width:300px; text-align:center; box-shadow:0 10px 25px rgba(0,0,0,0.5);">
+    <div style="font-size:32px; margin-bottom:8px;">🔐</div>
+    <h3 style="margin:0 0 6px 0; font-size:16px; color:#1e293b;">Área Exclusiva de Administrador</h3>
+    <p style="margin:0 0 14px 0; font-size:11px; color:#64748b;">Los cajeros no tienen acceso a este menú. Ingresa tu PIN de Administrador.</p>
+    <input type="password" id="inputPinAdmin" placeholder="••••" maxlength="6" style="width:100%; padding:12px; font-size:22px; text-align:center; border:1px solid #cbd5e1; border-radius:10px; margin-bottom:12px; box-sizing:border-box; letter-spacing:6px;" />
+    <button onclick="verificarSoloAdmin()" style="width:100%; background:#7c3aed; color:white; border:none; padding:12px; border-radius:10px; font-weight:bold; font-size:13px; cursor:pointer;">Verificar Acceso</button>
+  </div>
+</div>
+
+<script>
+  var NOMBRE_MODULO_SEGURIDAD = 'merma';
+
+  function moduloRequierePinAdmin() {
+    var datos = localStorage.getItem('pos_db_modulos_bloqueados');
+    if (!datos) return true;
+    try {
+      var config = JSON.parse(datos);
+      if (!config || typeof config !== 'object' || Array.isArray(config)) return true;
+      return config[NOMBRE_MODULO_SEGURIDAD] !== false;
+    } catch (e) {
+      return true;
+    }
+  }
+
+  window.addEventListener('DOMContentLoaded', () => {
+    const datosUsuarios = localStorage.getItem('pos_db_users');
+    if (!datosUsuarios) {
+      document.getElementById('modalSeguridadAdmin').style.display = 'none';
+      return;
+    }
+
+    try {
+      const usuarios = JSON.parse(datosUsuarios);
+      const existeAdmin = Array.isArray(usuarios) && usuarios.some(u => u.rol === 'administrador');
+      if (!existeAdmin || !moduloRequierePinAdmin()) {
+        document.getElementById('modalSeguridadAdmin').style.display = 'none';
+      }
+    } catch (e) {
+      document.getElementById('modalSeguridadAdmin').style.display = 'none';
+    }
+  });
+
+  function verificarSoloAdmin() {
+    const pinIngresado = document.getElementById('inputPinAdmin').value.trim();
+    const datosUsuarios = localStorage.getItem('pos_db_users');
+
+    if (!datosUsuarios) {
+      document.getElementById('modalSeguridadAdmin').style.display = 'none';
+      return;
+    }
+
+    const usuarios = JSON.parse(datosUsuarios);
+    const existeAdmin = usuarios.some(u => u.rol === 'administrador');
+
+    if (!existeAdmin || !moduloRequierePinAdmin()) {
+      document.getElementById('modalSeguridadAdmin').style.display = 'none';
+      return;
+    }
+
+    const usuarioValido = usuarios.find(u => String(u.pin) === String(pinIngresado) && u.rol === 'administrador');
+
+    if (usuarioValido) {
+      document.getElementById('modalSeguridadAdmin').style.display = 'none';
+    } else {
+      alert("⛔ Acceso denegado. Este menú está restringido únicamente a Administradores.");
+      document.getElementById('inputPinAdmin').value = "";
+    }
+  }
+</script>
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Módulo de Mermas</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    /* NUEVO: línea roja animada del lector de código de barras */
+    .gp-scanner-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 10; }
+    .gp-scanner-line-wrap { position: relative; width: 280px; max-width: 78%; height: 100px; }
+    .gp-scanner-line { position: absolute; left: 0; top: 4%; width: 100%; height: 2px; border-radius: 2px; background: #ef4444; box-shadow: 0 0 8px 2px rgba(239, 68, 68, 0.85); animation: gp-scan-move 1.8s ease-in-out infinite; }
+    @keyframes gp-scan-move { 0% { top: 4%; } 50% { top: 92%; } 100% { top: 4%; } }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen">
+
+  <main class="max-w-md mx-auto p-4 space-y-4">
+    
+    <!-- ENCABEZADO -->
+    <div class="bg-slate-900 text-white p-4 rounded-xl shadow flex justify-between items-center">
+      <h1 class="font-bold text-base flex items-center gap-2">
+        <i class="fa-solid fa-dumpster-fire text-amber-500"></i> Registro de Merma
+      </h1>
+      <button onclick="abrirCamaraEscaneo()" class="bg-slate-800 hover:bg-slate-700 text-amber-400 p-2 rounded-lg border border-slate-700 text-xs font-bold flex items-center gap-1">
+        <i class="fa-solid fa-barcode text-base"></i> Escanear
+      </button>
+    </div>
+
+    <!-- CONTENEDOR CÁMARA QR -->
+    <div id="contenedorReader" class="hidden bg-slate-900 p-3 rounded-xl border border-slate-700 space-y-2">
+      <div class="relative w-full rounded-lg overflow-hidden">
+        <div id="reader" class="w-full overflow-hidden rounded-lg"></div>
+        <div class="gp-scanner-overlay">
+          <div class="gp-scanner-line-wrap"><div class="gp-scanner-line"></div></div>
+        </div>
+      </div>
+      <button onclick="cerrarCamaraEscaneo()" class="w-full bg-red-600 text-white text-xs font-bold py-2 rounded-lg">
+        Cerrar Cámara
+      </button>
+    </div>
+
+    <!-- BÚSQUEDA Y FILTROS -->
+    <div class="grid grid-cols-2 gap-2">
+      <input type="text" id="inputBuscar" onkeyup="filtrarProductos()" placeholder="Buscar producto o código..." 
+             class="bg-white border border-slate-300 p-2.5 rounded-xl text-xs font-medium focus:outline-none focus:ring-1 focus:ring-amber-500">
+      
+      <select id="filtroCategoria" onchange="filtrarProductos()" 
+              class="bg-white border border-slate-300 p-2.5 rounded-xl text-xs font-medium focus:outline-none focus:ring-1 focus:ring-amber-500">
+        <option value="">Todas las Categorías</option>
+      </select>
+    </div>
+
+    <!-- LISTA DE PRODUCTOS DISPONIBLES EN INVENTARIO -->
+    <section class="space-y-2">
+      <h2 class="text-xs font-bold text-slate-600 uppercase tracking-wider">Productos en Inventario</h2>
+      <div id="listaProductosMerma" class="space-y-2 max-h-48 overflow-y-auto pr-1">
+        <!-- Se puebla dinámicamente -->
+      </div>
+    </section>
+
+    <!-- ITEMS SELECCIONADOS PARA MERMA -->
+    <section class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+      <div class="flex justify-between items-center border-b border-slate-100 pb-2">
+        <h2 class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+          <i class="fa-solid fa-list-check text-amber-600"></i> Productos a Mermar
+        </h2>
+        <button onclick="limpiarMerma()" class="text-[10px] text-slate-400 hover:text-red-500 font-bold">
+          Vaciar Todo
+        </button>
+      </div>
+
+      <div id="listaMermaSeleccionada" class="space-y-2 max-h-52 overflow-y-auto pr-1">
+        <p class="text-center py-4 text-xs text-slate-400">No hay productos agregados a merma.</p>
+      </div>
+
+      <!-- TOTALES -->
+      <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1.5 text-xs font-bold">
+        <div class="flex justify-between text-slate-600">
+          <span>Pérdida Total (Costo):</span>
+          <span id="lblTotalCosto" class="text-red-600 font-mono text-sm">$0.00</span>
+        </div>
+        <div class="flex justify-between text-slate-600">
+          <span>Pérdida Total (Venta):</span>
+          <span id="lblTotalVenta" class="text-slate-900 font-mono text-sm">$0.00</span>
+        </div>
+      </div>
+
+      <button onclick="guardarYAplicarMerma()" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 rounded-xl shadow transition active:scale-98 text-xs flex items-center justify-center gap-2">
+        <i class="fa-solid fa-check-double text-base"></i> Registrar Merma y Descontar de Inventario
+      </button>
+    </section>
+
+  </main>
+
+  <!-- ESPACIADOR PARA EVITAR QUE LA BARRA INFERIOR TAPE CONTENIDO -->
+  <div class="h-24"></div>
+
+  <!-- BARRA INFERIOR DE SUBMENÚS CON ÍCONOS COLORIDOS 🌈 -->
+  <div class="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 py-2 px-2 z-40 flex justify-around items-center shadow-lg text-[10px] font-bold">
+    
+    <button onclick="abrirReporteMerma('dia')" class="flex flex-col items-center p-1 rounded-xl hover:bg-sky-50 transition text-slate-700 gap-1 w-1/4">
+      <div class="w-9 h-9 rounded-full bg-sky-100 flex items-center justify-center text-sky-600 text-sm shadow-sm">
+        <i class="fa-solid fa-calendar-day"></i>
+      </div>
+      <span class="truncate">Merma Día</span>
+    </button>
+
+    <button onclick="abrirReporteMerma('rango')" class="flex flex-col items-center p-1 rounded-xl hover:bg-emerald-50 transition text-slate-700 gap-1 w-1/4">
+      <div class="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 text-sm shadow-sm">
+        <i class="fa-solid fa-calendar-range"></i>
+      </div>
+      <span class="truncate">Por Rango</span>
+    </button>
+
+    <button onclick="abrirReporteMerma('top10')" class="flex flex-col items-center p-1 rounded-xl hover:bg-amber-50 transition text-slate-700 gap-1 w-1/4">
+      <div class="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 text-sm shadow-sm">
+        <i class="fa-solid fa-ranking-star"></i>
+      </div>
+      <span class="truncate">Top 10</span>
+    </button>
+
+    <button onclick="abrirReporteMerma('categoria')" class="flex flex-col items-center p-1 rounded-xl hover:bg-purple-50 transition text-slate-700 gap-1 w-1/4">
+      <div class="w-9 h-9 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 text-sm shadow-sm">
+        <i class="fa-solid fa-layer-group"></i>
+      </div>
+      <span class="truncate">Categorías</span>
+    </button>
+
+  </div>
+
+  <!-- VENTANA MODAL PARA REPORTES -->
+  <div id="modalReportesMerma" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex flex-col justify-end sm:justify-center p-0 sm:p-4">
+    <div class="bg-white w-full max-w-2xl mx-auto rounded-t-2xl sm:rounded-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden border border-slate-100">
+      
+      <!-- ENCABEZADO MODAL -->
+      <div class="bg-slate-900 text-white p-4 flex justify-between items-center">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-chart-pie text-amber-400 text-lg"></i>
+          <h3 id="tituloModalReporte" class="font-bold text-sm">Reporte de Mermas</h3>
+        </div>
+        <button onclick="cerrarReporteMerma()" class="text-slate-400 hover:text-white p-1">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <!-- CONTENIDO DEL REPORTE -->
+      <div id="contenidoReporteMerma" class="p-4 overflow-y-auto space-y-4 text-xs">
+        <!-- Se puebla dinámicamente -->
+      </div>
+
+      <!-- PIE DEL MODAL -->
+      <div class="p-3 bg-slate-50 border-t border-slate-200 text-right">
+        <button onclick="cerrarReporteMerma()" class="bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 rounded-xl text-xs font-bold">
+          Cerrar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const DB_KEY = 'pos_db_products';
+    const DB_MERMA_KEY = 'pos_db_merma_history';
+    const DB_KARDEX_KEY = 'pos_db_kardex';
+
+    const MOTIVOS_MERMA = ['Daño', 'Caducidad', 'Robo'];
+
+    let productosInventario = [];
+    let itemsMerma = [];
+    let html5QrCode = null;
+
+    document.addEventListener("DOMContentLoaded", () => {
+      sincronizarConInventario();
+      window.addEventListener('storage', (e) => {
+        if (e.key === DB_KEY) {
+          sincronizarConInventario();
+        }
+      });
+    });
+
+    // NUEVO: registra un movimiento en el kárdex compartido
+    function registrarMovimientoKardex(mov) {
+      try {
+        const historial = JSON.parse(localStorage.getItem(DB_KARDEX_KEY) || '[]');
+        historial.unshift({
+          id: Date.now() + '_' + Math.random().toString(36).substring(2, 8),
+          fecha: new Date().toISOString(),
+          ...mov
+        });
+        localStorage.setItem(DB_KARDEX_KEY, JSON.stringify(historial));
+      } catch (e) {}
+    }
+
+    function sincronizarConInventario() {
+      const data = localStorage.getItem(DB_KEY);
+      if (data) {
+        try {
+          productosInventario = JSON.parse(data);
+          if (!Array.isArray(productosInventario)) productosInventario = [];
+        } catch(e) {
+          productosInventario = [];
+        }
+      } else {
+        productosInventario = [];
+      }
+
+      poblarCategorias();
+      renderizarProductos(productosInventario);
+    }
+
+    function poblarCategorias() {
+      const selectCat = document.getElementById('filtroCategoria');
+      const categorias = [...new Set(productosInventario.map(p => p.category || p.categoria || p.cat || '').filter(Boolean))];
+      
+      selectCat.innerHTML = '<option value="">Todas las Categorías</option>';
+      categorias.forEach(cat => {
+        selectCat.innerHTML += `<option value="${cat}">${cat}</option>`;
+      });
+    }
+
+    // NUEVO: los productos INACTIVOS (archivados) ya no se pueden mermar
+    function renderizarProductos(lista) {
+      const contenedor = document.getElementById('listaProductosMerma');
+
+      const listaActiva = (lista || []).filter(p => p.activo !== false);
+
+      if (listaActiva.length === 0) {
+        contenedor.innerHTML = `<p class="text-center py-4 text-xs text-slate-400">No hay productos en el inventario.</p>`;
+        return;
+      }
+
+      contenedor.innerHTML = '';
+      listaActiva.forEach((prod, index) => {
+        const idProd = prod.id !== undefined ? prod.id : index;
+        const nombre = prod.productName || prod.nombre || prod.name || prod.titulo || 'Sin nombre';
+        const stock = Number(prod.stock !== undefined ? prod.stock : (prod.cantidad || prod.inventory || 0));
+        const unidad = prod.unit || prod.unidad || 'pza';
+        const costo = Number(prod.cost !== undefined ? prod.cost : (prod.costo || prod.precioCosto || 0));
+
+        const div = document.createElement('div');
+        div.className = "flex justify-between items-center bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-xs";
+        div.innerHTML = `
+          <div>
+            <p class="font-bold text-slate-800">${nombre}</p>
+            <p class="text-[10px] text-slate-500">Stock: ${stock} ${unidad} | Costo: $${costo.toFixed(2)}</p>
+          </div>
+          <button onclick="agregarAMerma('${idProd}')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 shadow">
+            <i class="fa-solid fa-plus"></i> Merma
+          </button>
+        `;
+        contenedor.appendChild(div);
+      });
+    }
+
+    function filtrarProductos() {
+      const texto = document.getElementById('inputBuscar').value.toLowerCase();
+      const catFiltro = document.getElementById('filtroCategoria').value;
+
+      const filtrados = productosInventario.filter((p, index) => {
+        const nombre = (p.productName || p.nombre || p.name || p.titulo || '').toLowerCase();
+        const codigo = String(p.barcode || p.codigo || p.code || '');
+        const categoria = p.category || p.categoria || p.cat || '';
+
+        const coincideTexto = nombre.includes(texto) || codigo.includes(texto);
+        const coincideCat = !catFiltro || categoria === catFiltro;
+        return coincideTexto && coincideCat;
+      });
+
+      renderizarProductos(filtrados);
+    }
+
+    // NUEVO: cada item agregado a merma inicia con motivo "Daño" por defecto
+    function agregarAMerma(idProd) {
+      const producto = productosInventario.find((p, index) => String(p.id !== undefined ? p.id : index) === String(idProd));
+      if (!producto) return;
+
+      const realId = producto.id !== undefined ? producto.id : productosInventario.indexOf(producto);
+      const stockDisp = Number(producto.stock !== undefined ? producto.stock : (producto.cantidad || producto.inventory || 0));
+
+      if (stockDisp <= 0) {
+        alert("⚠️ Este producto no tiene stock disponible.");
+        return;
+      }
+
+      const existente = itemsMerma.find(i => String(i.id) === String(realId));
+      if (existente) {
+        if (existente.cantidad + 1 > stockDisp) {
+          alert("⚠️ La cantidad supera el stock actual disponible.");
+          return;
+        }
+        existente.cantidad += 1;
+      } else {
+        itemsMerma.push({
+          id: realId,
+          nombre: producto.productName || producto.nombre || producto.name || producto.titulo || 'Sin nombre',
+          unidad: producto.unit || producto.unidad || 'pza',
+          costo: Number(producto.cost !== undefined ? producto.cost : (producto.costo || producto.precioCosto || 0)),
+          precio: Number(producto.price !== undefined ? producto.price : (producto.precio || producto.precioVenta || 0)),
+          stockActual: stockDisp,
+          cantidad: 1,
+          motivo: 'Daño'
+        });
+      }
+      renderizarMermaSeleccionada();
+    }
+
+    function actualizarCantidadMerma(idProd, nuevaCant) {
+      const item = itemsMerma.find(i => String(i.id) === String(idProd));
+      if (item) {
+        let val = parseFloat(nuevaCant) || 0;
+        if (val > item.stockActual) {
+          alert("⚠️ La cantidad de merma no puede superar el stock actual disponible.");
+          val = item.stockActual;
+        }
+        if (val < 0) val = 0;
+        item.cantidad = val;
+        renderizarMermaSeleccionada();
+      }
+    }
+
+    // NUEVO: cambiar el motivo de un item ya agregado
+    function actualizarMotivoMerma(idProd, motivo) {
+      const item = itemsMerma.find(i => String(i.id) === String(idProd));
+      if (item) {
+        item.motivo = motivo;
+      }
+    }
+
+    function eliminarItemMerma(idProd) {
+      itemsMerma = itemsMerma.filter(i => String(i.id) !== String(idProd));
+      renderizarMermaSeleccionada();
+    }
+
+    // NUEVO: cada fila ahora incluye un selector de Motivo (Daño/Caducidad/Robo)
+    function renderizarMermaSeleccionada() {
+      const contenedor = document.getElementById('listaMermaSeleccionada');
+      if (itemsMerma.length === 0) {
+        contenedor.innerHTML = `<p class="text-center py-4 text-xs text-slate-400">No hay productos agregados a merma.</p>`;
+        actualizarTotalesMerma();
+        return;
+      }
+
+      contenedor.innerHTML = '';
+      itemsMerma.forEach(item => {
+        const div = document.createElement('div');
+        div.className = "bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-xs space-y-1.5";
+
+        const opcionesMotivo = MOTIVOS_MERMA.map(m => `<option value="${m}" ${item.motivo === m ? 'selected' : ''}>${m}</option>`).join('');
+
+        div.innerHTML = `
+          <div class="flex justify-between items-center">
+            <div class="w-1/2">
+              <p class="font-bold text-slate-800 truncate">${item.nombre}</p>
+              <p class="text-[10px] text-slate-500">Costo U: $${item.costo.toFixed(2)} | Venta U: $${item.precio.toFixed(2)}</p>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <input type="number" step="any" value="${item.cantidad}" onchange="actualizarCantidadMerma('${item.id}', this.value)" 
+                     class="w-16 bg-white border border-slate-300 rounded-lg p-1 text-center font-bold text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500">
+              <span class="text-[10px] font-bold text-slate-600">${item.unidad}</span>
+              <button onclick="eliminarItemMerma('${item.id}')" class="text-red-500 hover:text-red-700 p-1">
+                <i class="fa-solid fa-trash"></i>
+              </button>
+            </div>
+          </div>
+          <div class="flex items-center gap-1.5 border-t border-slate-200 pt-1.5">
+            <span class="text-[10px] font-bold text-slate-500">Motivo:</span>
+            <select onchange="actualizarMotivoMerma('${item.id}', this.value)" class="flex-1 bg-white border border-slate-300 rounded-lg p-1 text-[11px] font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-amber-500">
+              ${opcionesMotivo}
+            </select>
+          </div>
+        `;
+        contenedor.appendChild(div);
+      });
+      actualizarTotalesMerma();
+    }
+
+    function actualizarTotalesMerma() {
+      let totalCosto = 0;
+      let totalVenta = 0;
+
+      itemsMerma.forEach(item => {
+        totalCosto += item.costo * item.cantidad;
+        totalVenta += item.precio * item.cantidad;
+      });
+
+      document.getElementById('lblTotalCosto').innerText = `$${totalCosto.toFixed(2)}`;
+      document.getElementById('lblTotalVenta').innerText = `$${totalVenta.toFixed(2)}`;
+    }
+
+    function limpiarMerma() {
+      itemsMerma = [];
+      renderizarMermaSeleccionada();
+    }
+
+    function guardarYAplicarMerma() {
+      if (itemsMerma.length === 0) {
+        alert("⚠️ No hay productos seleccionados para registrar merma.");
+        return;
+      }
+
+      if (!confirm("¿Registrar esta merma? Se restarán las cantidades del inventario general.")) {
+        return;
+      }
+
+      const ahora = new Date();
+      const fechaISO = ahora.toISOString();
+      const fechaCorta = fechaISO.split('T')[0];
+
+      const itemsGuardar = itemsMerma.map(m => {
+        const prodIn = productosInventario.find((p, index) => String(p.id !== undefined ? p.id : index) === String(m.id));
+        const categoria = prodIn ? (prodIn.category || prodIn.categoria || prodIn.cat || 'Sin Categoría') : 'Sin Categoría';
+        
+        return {
+          id: m.id,
+          nombre: m.nombre,
+          unidad: m.unidad,
+          categoria: categoria,
+          cantidad: m.cantidad,
+          costo: m.costo,
+          precio: m.precio,
+          motivo: m.motivo,
+          totalCosto: m.costo * m.cantidad,
+          totalVenta: m.precio * m.cantidad
+        };
+      });
+
+      // 1. Descontar stock del inventario
+      itemsMerma.forEach(m => {
+        const prodIn = productosInventario.find((p, index) => String(p.id !== undefined ? p.id : index) === String(m.id));
+        if (prodIn) {
+          let stockActual = Number(prodIn.stock !== undefined ? prodIn.stock : (prodIn.cantidad || prodIn.inventory || 0));
+          let nuevoStock = Math.max(0, stockActual - m.cantidad);
+          
+          if (prodIn.stock !== undefined) prodIn.stock = nuevoStock;
+          if (prodIn.cantidad !== undefined) prodIn.cantidad = nuevoStock;
+          if (prodIn.inventory !== undefined) prodIn.inventory = nuevoStock;
+        }
+      });
+
+      // 2. Guardar actualización en inventario general
+      localStorage.setItem(DB_KEY, JSON.stringify(productosInventario));
+
+      // 3. Guardar en historial de mermas
+      const registroMerma = {
+        id: Date.now(),
+        fecha: fechaISO,
+        fechaCorta: fechaCorta,
+        items: itemsGuardar,
+        totalCosto: itemsGuardar.reduce((acc, i) => acc + i.totalCosto, 0),
+        totalVenta: itemsGuardar.reduce((acc, i) => acc + i.totalVenta, 0)
+      };
+
+      let historialMerma = [];
+      try {
+        historialMerma = JSON.parse(localStorage.getItem(DB_MERMA_KEY)) || [];
+      } catch(e) {
+        historialMerma = [];
+      }
+      
+      historialMerma.push(registroMerma);
+      localStorage.setItem(DB_MERMA_KEY, JSON.stringify(historialMerma));
+
+      // 4. NUEVO: registrar cada item en el kárdex compartido, con su motivo
+      itemsGuardar.forEach(item => {
+        registrarMovimientoKardex({
+          productoId: item.id,
+          productoNombre: item.nombre,
+          tipo: 'salida',
+          cantidad: item.cantidad,
+          motivo: 'Merma - ' + item.motivo,
+          origen: 'merma',
+          referencia: String(registroMerma.id)
+        });
+      });
+
+      alert("✅ Merma registrada, descontada del inventario y guardada en el reporte.");
+      limpiarMerma();
+      sincronizarConInventario();
+    }
+
+    // NUEVO: escáner con detector nativo, formatos de retail y
+    // enfoque continuo post-inicio (mismo comportamiento que Caja)
+    function abrirCamaraEscaneo() {
+      const contenedor = document.getElementById('contenedorReader');
+      contenedor.classList.remove('hidden');
+
+      if (!html5QrCode) {
+        html5QrCode = new Html5Qrcode("reader", {
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.EAN_8,
+            Html5QrcodeSupportedFormats.UPC_A,
+            Html5QrcodeSupportedFormats.UPC_E,
+            Html5QrcodeSupportedFormats.CODE_128,
+            Html5QrcodeSupportedFormats.CODE_39,
+            Html5QrcodeSupportedFormats.CODABAR,
+            Html5QrcodeSupportedFormats.ITF,
+            Html5QrcodeSupportedFormats.QR_CODE
+          ],
+          useBarCodeDetectorIfSupported: true,
+          verbose: false
+        });
+      }
+
+      html5QrCode.start(
+        { facingMode: "environment" },
+        { fps: 20, qrbox: { width: 280, height: 100 }, aspectRatio: 1.7777778 },
+        (decodedText) => {
+          document.getElementById('inputBuscar').value = decodedText;
+          filtrarProductos();
+          cerrarCamaraEscaneo();
+        },
+        (errorMessage) => {}
+      ).then(() => {
+        try {
+          const video = document.querySelector('#reader video');
+          const track = video && video.srcObject ? video.srcObject.getVideoTracks()[0] : null;
+          if (track && typeof track.applyConstraints === 'function') {
+            track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+          }
+        } catch (e) {}
+      }).catch(err => {
+        alert("⚠️ No se pudo iniciar la cámara trasera. Asegúrate de dar permisos.");
+        cerrarCamaraEscaneo();
+      });
+    }
+
+    function cerrarCamaraEscaneo() {
+      if (html5QrCode && html5QrCode.isScanning) {
+        html5QrCode.stop().then(() => {
+          document.getElementById('contenedorReader').classList.add('hidden');
+        }).catch(() => {
+          document.getElementById('contenedorReader').classList.add('hidden');
+        });
+      } else {
+        document.getElementById('contenedorReader').classList.add('hidden');
+      }
+    }
+
+    function obtenerHistorialMerma() {
+      try {
+        return JSON.parse(localStorage.getItem(DB_MERMA_KEY)) || [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function abrirReporteMerma(tipo) {
+      const modal = document.getElementById('modalReportesMerma');
+      const titulo = document.getElementById('tituloModalReporte');
+      const contenedor = document.getElementById('contenidoReporteMerma');
+      
+      modal.classList.remove('hidden');
+
+      if (tipo === 'dia') {
+        titulo.innerText = '📅 Mermas Registradas por Día';
+        renderizarReportePorDia(contenedor);
+      } else if (tipo === 'rango') {
+        titulo.innerText = '📆 Total de Merma por Rango de Fechas';
+        renderizarReporteRango(contenedor);
+      } else if (tipo === 'top10') {
+        titulo.innerText = '🏆 Top 10 Productos Más Mermados';
+        renderizarReporteTop10(contenedor);
+      } else if (tipo === 'categoria') {
+        titulo.innerText = '🏷️ Mermas por Categoría';
+        renderizarReportePorCategoria(contenedor);
+      }
+    }
+
+    function cerrarReporteMerma() {
+      document.getElementById('modalReportesMerma').classList.add('hidden');
+    }
+
+    function renderizarReportePorDia(contenedor) {
+      const historial = obtenerHistorialMerma();
+      if (historial.length === 0) {
+        contenedor.innerHTML = `<p class="text-center py-6 text-slate-400">No hay registros de merma guardados.</p>`;
+        return;
+      }
+
+      const agrupadoPorDia = {};
+      historial.forEach(reg => {
+        const f = reg.fechaCorta || reg.fecha.split('T')[0];
+        if (!agrupadoPorDia[f]) {
+          agrupadoPorDia[f] = { totalCosto: 0, totalVenta: 0, items: [] };
+        }
+        agrupadoPorDia[f].totalCosto += reg.totalCosto;
+        agrupadoPorDia[f].totalVenta += reg.totalVenta;
+
+        reg.items.forEach(item => {
+          const exist = agrupadoPorDia[f].items.find(i => i.nombre === item.nombre && i.motivo === item.motivo);
+          if (exist) {
+            exist.cantidad += item.cantidad;
+            exist.totalCosto += item.totalCosto;
+            exist.totalVenta += item.totalVenta;
+          } else {
+            agrupadoPorDia[f].items.push({ ...item });
+          }
+        });
+      });
+
+      const diasOrdenados = Object.keys(agrupadoPorDia).sort().reverse();
+
+      let html = '';
+      diasOrdenados.forEach(dia => {
+        const data = agrupadoPorDia[dia];
+        html += `
+          <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+            <div class="flex justify-between items-center border-b border-slate-200 pb-2">
+              <span class="font-bold text-slate-800 text-sm"><i class="fa-regular fa-calendar font-normal text-amber-600"></i> ${dia}</span>
+              <div class="text-right">
+                <span class="text-red-600 font-bold block">Pérdida Costo: $${data.totalCosto.toFixed(2)}</span>
+                <span class="text-slate-600 text-[10px] block">Pérdida Venta: $${data.totalVenta.toFixed(2)}</span>
+              </div>
+            </div>
+            <div class="space-y-1">
+        `;
+
+        data.items.forEach(item => {
+          html += `
+            <div class="flex justify-between items-center text-[11px] bg-white p-2 rounded-lg border border-slate-100">
+              <div>
+                <p class="font-bold text-slate-700">${item.nombre}</p>
+                <p class="text-[10px] text-slate-400">Cant: ${item.cantidad} ${item.unidad} ${item.motivo ? '· ' + item.motivo : ''}</p>
+              </div>
+              <div class="text-right">
+                <p class="text-red-600 font-semibold">$${item.totalCosto.toFixed(2)} <span class="text-[9px] text-slate-400">(Costo)</span></p>
+                <p class="text-slate-800">$${item.totalVenta.toFixed(2)} <span class="text-[9px] text-slate-400">(Venta)</span></p>
+              </div>
+            </div>
+          `;
+        });
+
+        html += `</div></div>`;
+      });
+
+      contenedor.innerHTML = html;
+    }
+
+    function renderizarReporteRango(contenedor) {
+      const hoy = new Date();
+      const haceUnMes = new Date();
+      haceUnMes.setDate(hoy.getDate() - 30);
+
+      const strHoy = hoy.toISOString().split('T')[0];
+      const strHaceUnMes = haceUnMes.toISOString().split('T')[0];
+
+      contenedor.innerHTML = `
+        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-3">
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <div>
+              <label class="block text-slate-600 font-bold mb-1">Fecha Inicio:</label>
+              <input type="date" id="filtroFechaInicio" value="${strHaceUnMes}" onchange="calcularReporteRango()" class="w-full bg-white border border-slate-300 rounded-lg p-2 font-bold text-slate-700">
+            </div>
+            <div>
+              <label class="block text-slate-600 font-bold mb-1">Fecha Fin:</label>
+              <input type="date" id="filtroFechaFin" value="${strHoy}" onchange="calcularReporteRango()" class="w-full bg-white border border-slate-300 rounded-lg p-2 font-bold text-slate-700">
+            </div>
+          </div>
+        </div>
+        <div id="resultadoRangoMerma"></div>
+      `;
+
+      calcularReporteRango();
+    }
+
+    function calcularReporteRango() {
+      const inicio = document.getElementById('filtroFechaInicio').value;
+      const fin = document.getElementById('filtroFechaFin').value;
+      const contenedorRes = document.getElementById('resultadoRangoMerma');
+
+      if (!inicio || !fin) return;
+
+      const historial = obtenerHistorialMerma();
+      const filtrados = historial.filter(r => {
+        const f = r.fechaCorta || r.fecha.split('T')[0];
+        return f >= inicio && f <= fin;
+      });
+
+      let totalCosto = 0;
+      let totalVenta = 0;
+      let totalArticulos = 0;
+
+      filtrados.forEach(r => {
+        totalCosto += r.totalCosto;
+        totalVenta += r.totalVenta;
+        r.items.forEach(i => totalArticulos += i.cantidad);
+      });
+
+      contenedorRes.innerHTML = `
+        <div class="mt-4 space-y-3">
+          <div class="bg-red-50 border border-red-200 rounded-xl p-4 text-center space-y-1">
+            <p class="text-xs text-red-600 font-bold uppercase">Pérdida Total en Precio Costo</p>
+            <p class="text-2xl font-black text-red-600 font-mono">$${totalCosto.toFixed(2)}</p>
+          </div>
+
+          <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center space-y-1">
+            <p class="text-xs text-slate-600 font-bold uppercase">Valor Perdido en Precio Venta</p>
+            <p class="text-xl font-bold text-slate-900 font-mono">$${totalVenta.toFixed(2)}</p>
+          </div>
+
+          <div class="bg-white border border-slate-200 rounded-xl p-3 flex justify-between items-center text-xs">
+            <span class="text-slate-600 font-bold">Unidades Mermadas:</span>
+            <span class="font-black text-amber-600">${totalArticulos.toFixed(2)} pzas/uds</span>
+          </div>
+          
+          <div class="bg-white border border-slate-200 rounded-xl p-3 flex justify-between items-center text-xs">
+            <span class="text-slate-600 font-bold">Registros Realizados:</span>
+            <span class="font-black text-slate-800">${filtrados.length} eventos</span>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderizarReporteTop10(contenedor) {
+      const historial = obtenerHistorialMerma();
+      if (historial.length === 0) {
+        contenedor.innerHTML = `<p class="text-center py-6 text-slate-400">No hay registros de merma guardados.</p>`;
+        return;
+      }
+
+      const mapa = {};
+      historial.forEach(r => {
+        r.items.forEach(i => {
+          if (!mapa[i.nombre]) {
+            mapa[i.nombre] = { nombre: i.nombre, cantidad: 0, totalCosto: 0, totalVenta: 0, unidad: i.unidad };
+          }
+          mapa[i.nombre].cantidad += i.cantidad;
+          mapa[i.nombre].totalCosto += i.totalCosto;
+          mapa[i.nombre].totalVenta += i.totalVenta;
+        });
+      });
+
+      const listaTop = Object.values(mapa)
+        .sort((a, b) => b.cantidad - a.cantidad)
+        .slice(0, 10);
+
+      let html = '<div class="space-y-2">';
+      listaTop.forEach((prod, index) => {
+        html += `
+          <div class="flex justify-between items-center bg-slate-50 border border-slate-200 p-3 rounded-xl text-xs">
+            <div class="flex items-center gap-3">
+              <span class="w-6 h-6 flex items-center justify-center bg-amber-600 text-white font-black text-xs rounded-full">${index + 1}</span>
+              <div>
+                <p class="font-bold text-slate-800">${prod.nombre}</p>
+                <p class="text-[10px] text-slate-500">Mermado: <strong class="text-slate-700">${prod.cantidad} ${prod.unidad}</strong></p>
+              </div>
+            </div>
+            <div class="text-right">
+              <p class="text-red-600 font-bold">$${prod.totalCosto.toFixed(2)} <span class="text-[9px] text-slate-400">(Costo)</span></p>
+              <p class="text-slate-700 font-semibold text-[10px]">$${prod.totalVenta.toFixed(2)} (Venta)</p>
+            </div>
+          </div>
+        `;
+      });
+      html += '</div>';
+
+      contenedor.innerHTML = html;
+    }
+
+    function renderizarReportePorCategoria(contenedor) {
+      const historial = obtenerHistorialMerma();
+      if (historial.length === 0) {
+        contenedor.innerHTML = `<p class="text-center py-6 text-slate-400">No hay registros de merma guardados.</p>`;
+        return;
+      }
+
+      const mapaCat = {};
+      historial.forEach(r => {
+        r.items.forEach(i => {
+          const cat = i.categoria || 'Sin Categoría';
+          if (!mapaCat[cat]) {
+            mapaCat[cat] = { totalCosto: 0, totalVenta: 0, productos: {} };
+          }
+          mapaCat[cat].totalCosto += i.totalCosto;
+          mapaCat[cat].totalVenta += i.totalVenta;
+
+          if (!mapaCat[cat].productos[i.nombre]) {
+            mapaCat[cat].productos[i.nombre] = { nombre: i.nombre, cantidad: 0, totalCosto: 0, totalVenta: 0, unidad: i.unidad };
+          }
+          mapaCat[cat].productos[i.nombre].cantidad += i.cantidad;
+          mapaCat[cat].productos[i.nombre].totalCosto += i.totalCosto;
+          mapaCat[cat].productos[i.nombre].totalVenta += i.totalVenta;
+        });
+      });
+
+      let html = '';
+      Object.keys(mapaCat).forEach(cat => {
+        const dataCat = mapaCat[cat];
+        const listaProds = Object.values(dataCat.productos).sort((a, b) => b.cantidad - a.cantidad);
+
+        html += `
+          <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+            <div class="flex justify-between items-center border-b border-slate-200 pb-2">
+              <span class="font-bold text-slate-800 text-sm uppercase flex items-center gap-1.5">
+                <i class="fa-solid fa-tag text-amber-600 text-xs"></i> ${cat}
+              </span>
+              <div class="text-right">
+                <span class="text-red-600 font-bold block text-xs">Pérdida Costo: $${dataCat.totalCosto.toFixed(2)}</span>
+                <span class="text-slate-600 text-[10px] block">Pérdida Venta: $${dataCat.totalVenta.toFixed(2)}</span>
+              </div>
+            </div>
+            <div class="space-y-1">
+        `;
+
+        listaProds.forEach(p => {
+          html += `
+            <div class="flex justify-between items-center text-[11px] bg-white p-2 rounded-lg border border-slate-100">
+              <div>
+                <p class="font-bold text-slate-700">${p.nombre}</p>
+                <p class="text-[10px] text-slate-400">Cantidad: ${p.cantidad} ${p.unidad}</p>
+              </div>
+              <div class="text-right">
+                <p class="text-red-600 font-bold">$${p.totalCosto.toFixed(2)} <span class="text-[9px] text-slate-400">(Costo)</span></p>
+                <p class="text-slate-800 text-[10px]">$${p.totalVenta.toFixed(2)} <span class="text-[9px] text-slate-400">(Venta)</span></p>
+              </div>
+            </div>
+          `;
+        });
+
+        html += `</div></div>`;
+      });
+
+      contenedor.innerHTML = html;
+    }
+  </script>
+</body>
+</html>

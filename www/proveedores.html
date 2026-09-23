@@ -1,0 +1,2500 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+
+<!-- =========================================================
+     BLOQUE DE SEGURIDAD "SOLO ADMINISTRADOR"
+     Versión actualizada: ahora respeta la configuración de
+     "Módulos Bloqueados" definida en Gestión de Usuarios.
+
+     Módulo: Directorio de Proveedores
+     Clave: proveedores
+     ========================================================= -->
+
+<div id="modalSeguridadAdmin" style="position:fixed; top:0; left:0; width:100%; height:100%; background:#0f172a; z-index:999999; display:flex; align-items:center; justify-content:center; font-family:sans-serif;">
+
+  <div style="background:white; padding:24px; border-radius:16px; width:85%; max-width:300px; text-align:center; box-shadow:0 10px 25px rgba(0,0,0,0.5);">
+
+    <div style="font-size:32px; margin-bottom:8px;">
+      🔐
+    </div>
+
+    <h3 style="margin:0 0 6px 0; font-size:16px; color:#1e293b;">
+      Área Exclusiva de Administrador
+    </h3>
+
+    <p style="margin:0 0 14px 0; font-size:11px; color:#64748b;">
+      Los cajeros no tienen acceso a este menú. Ingresa tu PIN de Administrador.
+    </p>
+
+    <input
+      type="password"
+      id="inputPinAdmin"
+      placeholder="••••"
+      maxlength="6"
+      style="width:100%; padding:12px; font-size:22px; text-align:center; border:1px solid #cbd5e1; border-radius:10px; margin-bottom:12px; box-sizing:border-box; letter-spacing:6px;"
+    />
+
+    <button
+      onclick="verificarSoloAdmin()"
+      style="width:100%; background:#7c3aed; color:white; border:none; padding:12px; border-radius:10px; font-weight:bold; font-size:13px; cursor:pointer;">
+
+      Verificar Acceso
+
+    </button>
+
+  </div>
+
+</div>
+
+
+<script>
+
+var NOMBRE_MODULO_SEGURIDAD = 'proveedores';
+
+
+function moduloRequierePinAdmin(){
+
+    var datos =
+        localStorage.getItem(
+            'pos_db_modulos_bloqueados'
+        );
+
+
+    if(!datos){
+
+        return true;
+
+    }
+
+
+    try{
+
+        var config =
+            JSON.parse(datos);
+
+
+        if(
+            !config ||
+            typeof config !== 'object' ||
+            Array.isArray(config)
+        ){
+
+            return true;
+
+        }
+
+
+        return config[
+            NOMBRE_MODULO_SEGURIDAD
+        ] !== false;
+
+
+    }catch(e){
+
+        return true;
+
+    }
+
+}
+
+
+window.addEventListener(
+    'DOMContentLoaded',
+    function(){
+
+        const datosUsuarios =
+            localStorage.getItem(
+                'pos_db_users'
+            );
+
+
+        if(!datosUsuarios){
+
+            document
+                .getElementById(
+                    'modalSeguridadAdmin'
+                )
+                .style.display =
+                    'none';
+
+            return;
+
+        }
+
+
+        try{
+
+            const usuarios =
+                JSON.parse(
+                    datosUsuarios
+                );
+
+
+            const existeAdmin =
+                Array.isArray(usuarios) &&
+                usuarios.some(
+                    u =>
+                        u.rol ===
+                        'administrador'
+                );
+
+
+            if(
+                !existeAdmin ||
+                !moduloRequierePinAdmin()
+            ){
+
+                document
+                    .getElementById(
+                        'modalSeguridadAdmin'
+                    )
+                    .style.display =
+                        'none';
+
+            }
+
+
+        }catch(e){
+
+            document
+                .getElementById(
+                    'modalSeguridadAdmin'
+                )
+                .style.display =
+                    'none';
+
+        }
+
+    }
+);
+
+
+function verificarSoloAdmin(){
+
+    const pinIngresado =
+        document
+            .getElementById(
+                'inputPinAdmin'
+            )
+            .value
+            .trim();
+
+
+    const datosUsuarios =
+        localStorage.getItem(
+            'pos_db_users'
+        );
+
+
+    if(!datosUsuarios){
+
+        document
+            .getElementById(
+                'modalSeguridadAdmin'
+            )
+            .style.display =
+                'none';
+
+        return;
+
+    }
+
+
+    const usuarios =
+        JSON.parse(
+            datosUsuarios
+        );
+
+
+    const existeAdmin =
+        usuarios.some(
+            u =>
+                u.rol ===
+                'administrador'
+        );
+
+
+    if(
+        !existeAdmin ||
+        !moduloRequierePinAdmin()
+    ){
+
+        document
+            .getElementById(
+                'modalSeguridadAdmin'
+            )
+            .style.display =
+                'none';
+
+        return;
+
+    }
+
+
+    const usuarioValido =
+        usuarios.find(
+            u =>
+                String(u.pin) ===
+                String(pinIngresado) &&
+                u.rol ===
+                'administrador'
+        );
+
+    if(usuarioValido){
+
+        document
+            .getElementById(
+                'modalSeguridadAdmin'
+            )
+            .style.display =
+                'none';
+
+    }else{
+
+        alert(
+            "⛔ Acceso denegado. Este menú está restringido únicamente a Administradores."
+        );
+
+
+        document
+            .getElementById(
+                'inputPinAdmin'
+            )
+            .value =
+                "";
+
+    }
+
+}
+
+</script>
+
+
+<meta charset="UTF-8">
+
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+>
+
+<title>
+    Directorio de Proveedores
+</title>
+
+
+<style>
+
+    *{
+        box-sizing:border-box;
+        margin:0;
+        padding:0;
+    }
+
+
+    body{
+        font-family:Arial,Helvetica,sans-serif;
+        background:#f4f6f8;
+        color:#1f2937;
+        padding:20px;
+    }
+
+
+    .container{
+        width:100%;
+        max-width:1100px;
+        margin:0 auto;
+    }
+
+
+    .header{
+        background:#fff;
+        border-radius:16px;
+        padding:20px;
+        margin-bottom:18px;
+        box-shadow:0 4px 15px rgba(0,0,0,.08);
+    }
+
+
+    .header-top{
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        gap:15px;
+        margin-bottom:18px;
+    }
+
+
+    .title{
+        font-size:24px;
+        font-weight:700;
+        color:#111827;
+    }
+
+
+    .subtitle{
+        font-size:13px;
+        color:#6b7280;
+        margin-top:5px;
+    }
+
+
+    .btn{
+        border:none;
+        border-radius:10px;
+        padding:11px 16px;
+        font-size:14px;
+        font-weight:600;
+        cursor:pointer;
+        transition:.2s;
+    }
+
+
+    .btn-primary{
+        background:#2563eb;
+        color:#fff;
+    }
+
+
+    .btn-primary:hover{
+        background:#1d4ed8;
+    }
+
+
+    .search-box{
+        width:100%;
+    }
+
+
+    .search-box input{
+        width:100%;
+        padding:13px 15px;
+        border:1px solid #d1d5db;
+        border-radius:10px;
+        font-size:15px;
+        outline:none;
+        background:#fff;
+    }
+
+
+    .search-box input:focus{
+        border-color:#2563eb;
+        box-shadow:0 0 0 3px rgba(37,99,235,.10);
+    }
+
+
+    .summary{
+        display:grid;
+        grid-template-columns:repeat(2,1fr);
+        gap:14px;
+        margin-bottom:18px;
+    }
+
+
+    .summary-card{
+        background:#fff;
+        border-radius:14px;
+        padding:18px;
+        box-shadow:0 4px 15px rgba(0,0,0,.06);
+    }
+
+
+    .summary-label{
+        font-size:13px;
+        color:#6b7280;
+        margin-bottom:6px;
+    }
+
+
+    .summary-value{
+        font-size:26px;
+        font-weight:700;
+        color:#111827;
+    }
+
+
+    .supplier-list{
+        display:grid;
+        grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+        gap:16px;
+    }
+
+
+    .supplier-card{
+        background:#fff;
+        border-radius:16px;
+        padding:18px;
+        box-shadow:0 4px 15px rgba(0,0,0,.07);
+    }
+
+
+    .supplier-top{
+        display:flex;
+        justify-content:space-between;
+        align-items:flex-start;
+        gap:10px;
+        margin-bottom:15px;
+    }
+
+
+    .supplier-name{
+        font-size:18px;
+        font-weight:700;
+        color:#111827;
+    }
+
+
+    .supplier-code{
+        font-size:12px;
+        color:#6b7280;
+        margin-top:5px;
+    }
+
+
+    .status{
+        display:inline-block;
+        padding:5px 9px;
+        border-radius:20px;
+        font-size:11px;
+        font-weight:700;
+        white-space:nowrap;
+    }
+
+
+    .status.active{
+        background:#dcfce7;
+        color:#166534;
+    }
+
+
+    .status.inactive{
+        background:#fee2e2;
+        color:#991b1b;
+    }
+
+
+    .supplier-info{
+        border-top:1px solid #eef0f2;
+        padding-top:12px;
+    }
+
+
+    .info-row{
+        display:flex;
+        gap:8px;
+        margin-bottom:8px;
+        font-size:13px;
+    }
+
+
+    .info-label{
+        color:#6b7280;
+        font-weight:600;
+        min-width:70px;
+    }
+
+
+    .info-value{
+        color:#374151;
+        word-break:break-word;
+    }
+
+
+    .card-actions{
+        display:flex;
+        gap:8px;
+        margin-top:16px;
+    }
+
+
+    .btn-edit{
+        flex:1;
+        background:#eff6ff;
+        color:#1d4ed8;
+    }
+
+
+    .btn-status{
+        flex:1;
+        background:#f3f4f6;
+        color:#374151;
+    }
+
+
+    .empty{
+        background:#fff;
+        border-radius:16px;
+        padding:45px 20px;
+        text-align:center;
+        color:#6b7280;
+        box-shadow:0 4px 15px rgba(0,0,0,.06);
+    }
+
+
+    .empty-icon{
+        font-size:42px;
+        margin-bottom:12px;
+    }
+
+
+    .modal{
+        position:fixed;
+        inset:0;
+        background:rgba(0,0,0,.55);
+        display:none;
+        align-items:center;
+        justify-content:center;
+        padding:20px;
+        z-index:1000;
+    }
+
+
+    .modal.show{
+        display:flex;
+    }
+
+
+    .modal-content{
+        background:#fff;
+        width:100%;
+        max-width:650px;
+        max-height:90vh;
+        overflow-y:auto;
+        border-radius:18px;
+        padding:22px;
+        box-shadow:0 15px 40px rgba(0,0,0,.20);
+    }
+
+
+    .modal-header{
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        margin-bottom:20px;
+    }
+
+
+    .modal-title{
+        font-size:21px;
+        font-weight:700;
+        color:#111827;
+    }
+
+
+    .form-group{
+        margin-bottom:14px;
+    }
+
+
+    .form-group label{
+        display:block;
+        font-size:13px;
+        font-weight:600;
+        color:#374151;
+        margin-bottom:6px;
+    }
+
+
+    .required{
+        color:#dc2626;
+    }
+
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea{
+        width:100%;
+        padding:11px 12px;
+        border:1px solid #d1d5db;
+        border-radius:9px;
+        font-size:14px;
+        outline:none;
+        background:#fff;
+    }
+
+
+    .form-group textarea{
+        min-height:90px;
+        resize:vertical;
+    }
+
+
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus{
+        border-color:#2563eb;
+        box-shadow:0 0 0 3px rgba(37,99,235,.10);
+    }
+
+
+    .form-actions{
+        display:flex;
+        gap:10px;
+        margin-top:20px;
+    }
+
+
+    .form-actions .btn{
+        flex:1;
+    }
+
+
+    .btn-cancel{
+        background:#f3f4f6;
+        color:#374151;
+    }
+
+
+    .btn-save{
+        background:#2563eb;
+        color:#fff;
+    }
+
+
+    .toast{
+        position:fixed;
+        left:50%;
+        bottom:25px;
+        transform:translate(-50%,20px);
+        background:#111827;
+        color:#fff;
+        padding:12px 18px;
+        border-radius:10px;
+        font-size:14px;
+        opacity:0;
+        pointer-events:none;
+        transition:.25s;
+        z-index:2000;
+    }
+
+
+    .toast.show{
+        opacity:1;
+        transform:translate(-50%,0);
+    }
+
+
+    @media(max-width:600px){
+
+        body{
+            padding:12px;
+        }
+
+
+        .header-top{
+            flex-direction:column;
+            align-items:stretch;
+        }
+
+
+        .header-top .btn{
+            width:100%;
+        }
+
+
+        .summary{
+            grid-template-columns:repeat(2,1fr);
+        }
+
+
+        .summary-value{
+            font-size:22px;
+        }
+
+
+        .supplier-list{
+            grid-template-columns:1fr;
+        }
+
+    }
+
+</style>
+
+</head>
+
+<body>
+
+
+<div class="container">
+
+
+<!-- ENCABEZADO -->
+
+<div class="header">
+
+<div class="header-top">
+
+<div>
+
+<div class="title">
+    Directorio de Proveedores
+</div>
+
+<div class="subtitle">
+    Administración y control de proveedores
+</div>
+
+</div>
+
+
+<button
+    type="button"
+    class="btn btn-primary"
+    id="btnNuevoProveedor">
+
+    + Nuevo proveedor
+
+</button>
+
+</div>
+
+
+<!-- BÚSQUEDA -->
+
+<div class="search-box">
+
+<input
+    type="text"
+    id="busqueda"
+    placeholder="Buscar por nombre, código, teléfono o contacto"
+    autocomplete="off">
+
+</div>
+
+</div>
+
+
+<!-- ==================================================
+     RESUMEN
+================================================== -->
+
+<div class="summary">
+
+
+<div class="summary-card">
+
+<div class="summary-label">
+    Total proveedores
+</div>
+
+<div
+    class="summary-value"
+    id="totalProveedores">
+
+    0
+
+</div>
+
+</div>
+
+
+<div class="summary-card">
+
+<div class="summary-label">
+    Proveedores activos
+</div>
+
+<div
+    class="summary-value"
+    id="totalActivos">
+
+    0
+
+</div>
+
+</div>
+
+
+</div>
+
+
+<!-- ==================================================
+     LISTA
+================================================== -->
+
+<div
+    class="supplier-list"
+    id="listaProveedores">
+</div>
+
+
+</div>
+
+
+<!-- ======================================================
+     MODAL PROVEEDOR
+====================================================== -->
+
+<div
+    class="modal"
+    id="modalProveedor">
+
+<div class="modal-content">
+
+
+<div class="modal-header">
+
+<div
+    class="modal-title"
+    id="tituloModal">
+
+    Nuevo proveedor
+
+</div>
+
+</div>
+
+
+<form
+    id="formProveedor">
+
+
+<input
+    type="hidden"
+    id="proveedorId">
+
+
+<!-- CÓDIGO -->
+
+<div class="form-group">
+
+<label>
+    Código
+</label>
+
+<input
+    type="text"
+    id="codigo"
+    placeholder="Código del proveedor">
+
+</div>
+
+
+<!-- NOMBRE -->
+
+<div class="form-group">
+
+<label>
+    Nombre del proveedor
+    <span class="required">*</span>
+</label>
+
+<input
+    type="text"
+    id="nombre"
+    placeholder="Nombre del proveedor"
+    required>
+
+</div>
+
+
+<!-- CONTACTO -->
+
+<div class="form-group">
+
+<label>
+    Persona de contacto
+</label>
+
+<input
+    type="text"
+    id="contacto"
+    placeholder="Nombre del contacto">
+
+</div>
+
+
+<!-- TELÉFONO -->
+
+<div class="form-group">
+
+<label>
+    Teléfono
+</label>
+
+<input
+    type="tel"
+    id="telefono"
+    placeholder="Teléfono">
+
+</div>
+
+
+<!-- WHATSAPP -->
+
+<div class="form-group">
+
+<label>
+    WhatsApp
+</label>
+
+<input
+    type="tel"
+    id="whatsapp"
+    placeholder="Número de WhatsApp">
+
+</div>
+
+
+<!-- CORREO -->
+
+<div class="form-group">
+
+<label>
+    Correo electrónico
+</label>
+
+<input
+    type="email"
+    id="correo"
+    placeholder="correo@ejemplo.com">
+
+</div>
+
+
+<!-- DIRECCIÓN -->
+
+<div class="form-group">
+
+<label>
+    Dirección
+</label>
+
+<input
+    type="text"
+    id="direccion"
+    placeholder="Dirección">
+
+</div>
+
+
+<!-- COLONIA -->
+
+<div class="form-group">
+
+<label>
+    Colonia
+</label>
+
+<input
+    type="text"
+    id="colonia"
+    placeholder="Colonia">
+
+</div>
+
+
+<!-- CIUDAD -->
+
+<div class="form-group">
+
+<label>
+    Ciudad
+</label>
+
+<input
+    type="text"
+    id="ciudad"
+    placeholder="Ciudad">
+
+</div>
+
+
+<!-- ESTADO -->
+
+<div class="form-group">
+
+<label>
+    Estado
+</label>
+
+<input
+    type="text"
+    id="estado"
+    placeholder="Estado">
+
+</div>
+
+
+<!-- CÓDIGO POSTAL -->
+
+<div class="form-group">
+
+<label>
+    Código postal
+</label>
+
+<input
+    type="text"
+    id="codigoPostal"
+    placeholder="Ej. 45600">
+
+</div>
+
+
+<!-- CONDICIONES DE PAGO -->
+
+<div class="form-group">
+
+<label>
+    Condiciones de pago
+    <span class="required">*</span>
+</label>
+
+<select
+    id="condicionesPago"
+    required>
+
+<option value="">
+    Seleccionar
+</option>
+
+<option value="Contado">
+    Contado
+</option>
+
+<option value="Crédito">
+    Crédito
+</option>
+
+</select>
+
+</div>
+
+
+<!-- DÍAS DE CRÉDITO -->
+
+<div
+    class="form-group"
+    id="grupoDiasCredito"
+    style="display:none;">
+
+<label>
+    Días de crédito
+</label>
+
+<input
+    type="number"
+    id="diasCredito"
+    min="0"
+    placeholder="Ej. 30">
+
+</div>
+
+
+<!-- FORMA DE PAGO -->
+
+<div class="form-group">
+
+<label>
+    Forma de pago
+</label>
+
+<select id="formaPago">
+
+<option value="">
+    Seleccionar
+</option>
+
+<option value="Efectivo">
+    Efectivo
+</option>
+
+<option value="Transferencia">
+    Transferencia
+</option>
+
+<option value="Tarjeta">
+    Tarjeta
+</option>
+
+<option value="Cheque">
+    Cheque
+</option>
+
+<option value="Otro">
+    Otro
+</option>
+
+</select>
+
+</div>
+
+
+<!-- NOTAS -->
+
+<div class="form-group">
+
+<label>
+    Notas / observaciones
+</label>
+
+<textarea
+    id="notas"
+    placeholder="Información adicional del proveedor..."></textarea>
+
+</div>
+
+
+<!-- ESTADO -->
+
+<div class="form-group">
+
+<label>
+    Estado del proveedor
+</label>
+
+<select id="estadoProveedor">
+
+<option value="Activo">
+    Activo
+</option>
+
+<option value="Inactivo">
+    Inactivo
+</option>
+
+</select>
+
+</div>
+
+
+<!-- BOTONES -->
+
+<div class="form-actions">
+
+<button
+    type="button"
+    class="btn btn-cancel"
+    id="btnCancelarProveedor">
+
+    Cancelar
+
+</button>
+
+
+<button
+    type="submit"
+    class="btn btn-save">
+
+    Guardar proveedor
+
+</button>
+
+</div>
+
+
+</form>
+
+</div>
+
+</div>
+
+
+<!-- ======================================================
+     MENSAJE
+====================================================== -->
+
+<div
+    class="toast"
+    id="toast">
+</div>
+
+
+<script>
+
+/* ======================================================
+   DATOS
+====================================================== */
+
+let proveedores = [];
+
+
+/* ======================================================
+   INICIALIZACIÓN
+====================================================== */
+
+document.addEventListener(
+    "DOMContentLoaded",
+    function(){
+
+        cargarProveedores();
+
+        configurarEventos();
+
+        mostrarProveedores();
+
+    }
+);
+
+
+/* ======================================================
+   CARGAR DATOS
+====================================================== */
+
+function cargarProveedores(){
+
+    try{
+
+        const datos =
+            localStorage.getItem(
+                "directorioProveedores"
+            );
+
+
+        if(datos){
+
+            const datosParseados =
+                JSON.parse(
+                    datos
+                );
+
+
+            if(Array.isArray(datosParseados)){
+
+                proveedores =
+                    datosParseados;
+
+            }else{
+
+                proveedores = [];
+
+            }
+
+        }else{
+
+            proveedores = [];
+
+        }
+
+    }catch(error){
+
+        console.error(
+            "Error al cargar proveedores:",
+            error
+        );
+
+        proveedores = [];
+
+    }
+
+}
+
+
+/* ======================================================
+   GUARDAR DATOS
+====================================================== */
+
+function guardarDatos(){
+
+    localStorage.setItem(
+        "directorioProveedores",
+        JSON.stringify(
+            proveedores
+        )
+    );
+
+}
+
+
+/* ======================================================
+   CONFIGURAR EVENTOS
+====================================================== */
+
+function configurarEventos(){
+
+    const btnNuevo =
+        document.getElementById(
+            "btnNuevoProveedor"
+        );
+
+
+    if(btnNuevo){
+
+        btnNuevo.addEventListener(
+            "click",
+            function(){
+
+                abrirNuevoProveedor();
+
+            }
+        );
+
+    }
+
+
+    const btnCancelar =
+        document.getElementById(
+            "btnCancelarProveedor"
+        );
+
+
+    if(btnCancelar){
+
+        btnCancelar.addEventListener(
+            "click",
+            function(){
+
+                cerrarModal();
+
+            }
+        );
+
+    }
+
+
+    const condicionesPago =
+        document.getElementById(
+            "condicionesPago"
+        );
+
+
+    if(condicionesPago){
+
+        condicionesPago.addEventListener(
+            "change",
+            function(){
+
+                const grupo =
+                    document.getElementById(
+                        "grupoDiasCredito"
+                    );
+
+
+                if(!grupo){
+
+                    return;
+
+                }
+
+
+                if(
+                    this.value ===
+                    "Crédito"
+                ){
+
+                    grupo.style.display =
+                        "block";
+
+                }else{
+
+                    grupo.style.display =
+                        "none";
+
+
+                    const diasCredito =
+                        document.getElementById(
+                            "diasCredito"
+                        );
+
+
+                    if(diasCredito){
+
+                        diasCredito.value =
+                            "";
+
+                    }
+
+                }
+
+            }
+        );
+
+    }
+
+
+    const busqueda =
+        document.getElementById(
+            "busqueda"
+        );
+
+
+    if(busqueda){
+
+        busqueda.addEventListener(
+            "input",
+            function(){
+
+                mostrarProveedores();
+
+            }
+        );
+
+    }
+
+
+    const formProveedor =
+        document.getElementById(
+            "formProveedor"
+        );
+
+
+    if(formProveedor){
+
+        formProveedor.addEventListener(
+            "submit",
+            guardarFormulario
+        );
+
+    }
+
+}
+
+
+/* ======================================================
+   ABRIR NUEVO PROVEEDOR
+====================================================== */
+
+function abrirNuevoProveedor(){
+
+    const formulario =
+        document.getElementById(
+            "formProveedor"
+        );
+
+
+    const proveedorId =
+        document.getElementById(
+            "proveedorId"
+        );
+
+
+    const titulo =
+        document.getElementById(
+            "tituloModal"
+        );
+
+
+    const grupo =
+        document.getElementById(
+            "grupoDiasCredito"
+        );
+
+
+    const modal =
+        document.getElementById(
+            "modalProveedor"
+        );
+
+
+    if(!formulario || !modal){
+
+        console.error(
+            "No se encontró el formulario o modal de proveedor."
+        );
+
+        return;
+
+    }
+
+
+    formulario.reset();
+
+
+    if(proveedorId){
+
+        proveedorId.value = "";
+
+    }
+
+
+    if(titulo){
+
+        titulo.textContent =
+            "Nuevo proveedor";
+
+    }
+
+
+    if(grupo){
+
+        grupo.style.display =
+            "none";
+
+    }
+
+
+    modal.classList.add(
+        "show"
+    );
+
+}
+
+
+/* ======================================================
+   CERRAR MODAL
+====================================================== */
+
+function cerrarModal(){
+
+    const modal =
+        document.getElementById(
+            "modalProveedor"
+        );
+
+
+    if(modal){
+
+        modal.classList.remove(
+            "show"
+        );
+
+    }
+
+}
+
+
+/* ======================================================
+   GUARDAR FORMULARIO
+====================================================== */
+
+function guardarFormulario(e){
+
+    e.preventDefault();
+
+
+    const id =
+        document
+            .getElementById(
+                "proveedorId"
+            )
+            .value;
+
+
+    const proveedor = {
+
+        id:
+            id ||
+            Date.now().toString(),
+
+        codigo:
+            document
+                .getElementById(
+                    "codigo"
+                )
+                .value
+                .trim(),
+
+        nombre:
+            document
+                .getElementById(
+                    "nombre"
+                )
+                .value
+                .trim(),
+
+        contacto:
+            document
+                .getElementById(
+                    "contacto"
+                )
+                .value
+                .trim(),
+
+        telefono:
+            document
+                .getElementById(
+                    "telefono"
+                )
+                .value
+                .trim(),
+
+        whatsapp:
+            document
+                .getElementById(
+                    "whatsapp"
+                )
+                .value
+                .trim(),
+
+        correo:
+            document
+                .getElementById(
+                    "correo"
+                )
+                .value
+                .trim(),
+
+        direccion:
+            document
+                .getElementById(
+                    "direccion"
+                )
+                .value
+                .trim(),
+
+        colonia:
+            document
+                .getElementById(
+                    "colonia"
+                )
+                .value
+                .trim(),
+
+        ciudad:
+            document
+                .getElementById(
+                    "ciudad"
+                )
+                .value
+                .trim(),
+
+        estado:
+            document
+                .getElementById(
+                    "estado"
+                )
+                .value
+                .trim(),
+
+        codigoPostal:
+            document
+                .getElementById(
+                    "codigoPostal"
+                )
+                .value
+                .trim(),
+
+        condicionesPago:
+            document
+                .getElementById(
+                    "condicionesPago"
+                )
+                .value,
+
+        diasCredito:
+            document
+                .getElementById(
+                    "diasCredito"
+                )
+                .value,
+
+        formaPago:
+            document
+                .getElementById(
+                    "formaPago"
+                )
+                .value,
+
+        notas:
+            document
+                .getElementById(
+                    "notas"
+                )
+                .value
+                .trim(),
+
+        estadoProveedor:
+            document
+                .getElementById(
+                    "estadoProveedor"
+                )
+                .value
+
+    };
+
+
+    /* EDITAR */
+
+    if(id){
+
+        const index =
+            proveedores.findIndex(
+                p =>
+                    p.id ===
+                    id
+            );
+
+
+        if(index !== -1){
+
+            proveedores[index] =
+                proveedor;
+
+            mostrarMensaje(
+                "Proveedor actualizado correctamente"
+            );
+
+        }
+
+    }
+
+
+    /* NUEVO */
+
+    else{
+
+        proveedores.push(
+            proveedor
+        );
+
+        mostrarMensaje(
+            "Proveedor registrado correctamente"
+        );
+
+    }
+
+
+    guardarDatos();
+
+    cerrarModal();
+
+    mostrarProveedores();
+
+}
+
+
+/* ======================================================
+   MOSTRAR PROVEEDORES
+====================================================== */
+
+function mostrarProveedores(){
+
+    const contenedor =
+        document.getElementById(
+            "listaProveedores"
+        );
+
+
+    if(!contenedor){
+
+        return;
+
+    }
+
+
+    const campoBusqueda =
+        document.getElementById(
+            "busqueda"
+        );
+
+
+    const busqueda =
+        campoBusqueda
+        ? campoBusqueda.value
+            .toLowerCase()
+            .trim()
+        : "";
+
+
+    const filtrados =
+        proveedores.filter(
+            p => {
+
+                const nombre =
+                    String(
+                        p.nombre || ""
+                    ).toLowerCase();
+
+
+                const codigo =
+                    String(
+                        p.codigo || ""
+                    ).toLowerCase();
+
+
+                const telefono =
+                    String(
+                        p.telefono || ""
+                    ).toLowerCase();
+
+
+                const contacto =
+                    String(
+                        p.contacto || ""
+                    ).toLowerCase();
+
+
+                return (
+
+                    nombre.includes(
+                        busqueda
+                    )
+
+                    ||
+
+                    codigo.includes(
+                        busqueda
+                    )
+
+                    ||
+
+                    telefono.includes(
+                        busqueda
+                    )
+
+                    ||
+
+                    contacto.includes(
+                        busqueda
+                    )
+
+                );
+
+            }
+        );
+
+
+    const total =
+        document.getElementById(
+            "totalProveedores"
+        );
+
+
+    if(total){
+
+        total.textContent =
+            proveedores.length;
+
+    }
+
+
+    const activos =
+        document.getElementById(
+            "totalActivos"
+        );
+
+
+    if(activos){
+
+        activos.textContent =
+            proveedores.filter(
+                p =>
+                    p.estadoProveedor ===
+                    "Activo"
+            ).length;
+
+    }
+
+
+    if(filtrados.length === 0){
+
+        contenedor.innerHTML = `
+
+            <div class="empty">
+
+                <div class="empty-icon">
+                    📦
+                </div>
+
+                <p>
+                    ${
+                        busqueda
+                        ? "No se encontraron proveedores."
+                        : "No hay proveedores registrados."
+                    }
+                </p>
+
+            </div>
+
+        `;
+
+        return;
+
+    }
+
+
+    contenedor.innerHTML =
+        filtrados
+            .map(
+                p => `
+
+                <div class="supplier-card">
+
+                    <div class="supplier-top">
+
+                        <div>
+
+                            <div class="supplier-name">
+
+                                ${escaparHTML(
+                                    p.nombre
+                                )}
+
+                            </div>
+
+                            <div class="supplier-code">
+
+                                Código:
+                                ${escaparHTML(
+                                    p.codigo
+                                )}
+
+                            </div>
+
+                        </div>
+
+
+                        <span
+                            class="status ${
+                                p.estadoProveedor ===
+                                "Activo"
+                                ? "active"
+                                : "inactive"
+                            }">
+
+                            ${escaparHTML(
+                                p.estadoProveedor
+                            )}
+
+                        </span>
+
+                    </div>
+
+
+                    <div class="supplier-info">
+
+                        ${
+                            p.contacto
+                            ? `
+
+                            <div class="info-row">
+
+                                <span class="info-label">
+                                    Contacto:
+                                </span>
+
+                                <span class="info-value">
+
+                                    ${escaparHTML(
+                                        p.contacto
+                                    )}
+
+                                </span>
+
+                            </div>
+
+                            `
+                            : ""
+                        }
+
+
+                        ${
+                            p.telefono
+                            ? `
+
+                            <div class="info-row">
+
+                                <span class="info-label">
+                                    Teléfono:
+                                </span>
+
+                                <span class="info-value">
+
+                                    ${escaparHTML(
+                                        p.telefono
+                                    )}
+
+                                </span>
+
+                            </div>
+
+                            `
+                            : ""
+                        }
+
+
+                        ${
+                            p.correo
+                            ? `
+
+                            <div class="info-row">
+
+                                <span class="info-label">
+                                    Correo:
+                                </span>
+
+                                <span class="info-value">
+
+                                    ${escaparHTML(
+                                        p.correo
+                                    )}
+
+                                </span>
+
+                            </div>
+
+                            `
+                            : ""
+                        }
+
+
+                        <div class="info-row">
+
+                            <span class="info-label">
+                                Pago:
+                            </span>
+
+                            <span class="info-value">
+
+                                ${escaparHTML(
+                                    p.condicionesPago
+                                )}
+
+                                ${
+                                    p.condicionesPago ===
+                                    "Crédito"
+                                    ? ` - ${
+                                        p.diasCredito || 0
+                                    } días`
+                                    : ""
+                                }
+
+                            </span>
+
+                        </div>
+
+
+                        ${
+                            p.formaPago
+                            ? `
+
+                            <div class="info-row">
+
+                                <span class="info-label">
+                                    Forma:
+                                </span>
+
+                                <span class="info-value">
+
+                                    ${escaparHTML(
+                                        p.formaPago
+                                    )}
+
+                                </span>
+
+                            </div>
+
+                            `
+                            : ""
+                        }
+
+                    </div>
+
+
+                    <div class="card-actions">
+
+                        <button
+                            type="button"
+                            class="btn btn-edit"
+                            data-accion="editar"
+                            data-id="${escaparHTML(p.id)}">
+
+                            ✏️ Editar
+
+                        </button>
+
+
+                        <button
+                            type="button"
+                            class="btn btn-status"
+                            data-accion="estado"
+                            data-id="${escaparHTML(p.id)}">
+
+                            ${
+                                p.estadoProveedor ===
+                                "Activo"
+                                ? "Desactivar"
+                                : "Activar"
+                            }
+
+                        </button>
+
+                    </div>
+
+                </div>
+
+            `
+            )
+            .join("");
+
+
+    /* EVENTOS DE TARJETAS */
+
+    contenedor
+        .querySelectorAll(
+            '[data-accion="editar"]'
+        )
+        .forEach(
+            boton => {
+
+                boton.addEventListener(
+                    "click",
+                    function(){
+
+                        editarProveedor(
+                            this.dataset.id
+                        );
+
+                    }
+                );
+
+            }
+        );
+
+
+    contenedor
+        .querySelectorAll(
+            '[data-accion="estado"]'
+        )
+        .forEach(
+            boton => {
+
+                boton.addEventListener(
+                    "click",
+                    function(){
+
+                        cambiarEstado(
+                            this.dataset.id
+                        );
+
+                    }
+                );
+
+            }
+        );
+
+}
+
+
+/* ======================================================
+   EDITAR PROVEEDOR
+====================================================== */
+
+function editarProveedor(id){
+
+    const p =
+        proveedores.find(
+            x =>
+                String(x.id) ===
+                String(id)
+        );
+
+
+    if(!p){
+
+        return;
+
+    }
+
+
+    document
+        .getElementById(
+            "proveedorId"
+        )
+        .value =
+            p.id || "";
+
+
+    document
+        .getElementById(
+            "codigo"
+        )
+        .value =
+            p.codigo || "";
+
+
+    document
+        .getElementById(
+            "nombre"
+        )
+        .value =
+            p.nombre || "";
+
+
+    document
+        .getElementById(
+            "contacto"
+        )
+        .value =
+            p.contacto || "";
+
+
+    document
+        .getElementById(
+            "telefono"
+        )
+        .value =
+            p.telefono || "";
+
+
+    document
+        .getElementById(
+            "whatsapp"
+        )
+        .value =
+            p.whatsapp || "";
+
+
+    document
+        .getElementById(
+            "correo"
+        )
+        .value =
+            p.correo || "";
+
+
+    document
+        .getElementById(
+            "direccion"
+        )
+        .value =
+            p.direccion || "";
+
+
+    document
+        .getElementById(
+            "colonia"
+        )
+        .value =
+            p.colonia || "";
+
+
+    document
+        .getElementById(
+            "ciudad"
+        )
+        .value =
+            p.ciudad || "";
+
+
+    document
+        .getElementById(
+            "estado"
+        )
+        .value =
+            p.estado || "";
+
+
+    document
+        .getElementById(
+            "codigoPostal"
+        )
+        .value =
+            p.codigoPostal || "";
+
+
+    document
+        .getElementById(
+            "condicionesPago"
+        )
+        .value =
+            p.condicionesPago || "";
+
+
+    document
+        .getElementById(
+            "diasCredito"
+        )
+        .value =
+            p.diasCredito || "";
+
+
+    document
+        .getElementById(
+            "formaPago"
+        )
+        .value =
+            p.formaPago || "";
+
+
+    document
+        .getElementById(
+            "notas"
+        )
+        .value =
+            p.notas || "";
+
+
+    document
+        .getElementById(
+            "estadoProveedor"
+        )
+        .value =
+            p.estadoProveedor ||
+            "Activo";
+
+
+    document
+        .getElementById(
+            "tituloModal"
+        )
+        .textContent =
+            "Editar proveedor";
+
+
+    const grupo =
+        document.getElementById(
+            "grupoDiasCredito"
+        );
+
+
+    if(grupo){
+
+        grupo.style.display =
+            p.condicionesPago ===
+            "Crédito"
+            ? "block"
+            : "none";
+
+    }
+
+
+    const modal =
+        document.getElementById(
+            "modalProveedor"
+        );
+
+
+    if(modal){
+
+        modal.classList.add(
+            "show"
+        );
+
+    }
+
+}
+
+
+/* ======================================================
+   CAMBIAR ESTADO
+====================================================== */
+
+function cambiarEstado(id){
+
+    const proveedor =
+        proveedores.find(
+            p =>
+                String(p.id) ===
+                String(id)
+        );
+
+
+    if(!proveedor){
+
+        return;
+
+    }
+
+
+    if(
+        proveedor.estadoProveedor ===
+        "Activo"
+    ){
+
+        proveedor.estadoProveedor =
+            "Inactivo";
+
+    }else{
+
+        proveedor.estadoProveedor =
+            "Activo";
+
+    }
+
+
+    guardarDatos();
+
+    mostrarProveedores();
+
+    mostrarMensaje(
+        "Estado actualizado correctamente"
+    );
+
+}
+
+
+/* ======================================================
+   ESCAPAR HTML
+====================================================== */
+
+function escaparHTML(texto){
+
+    if(
+        texto === null ||
+        texto === undefined
+    ){
+
+        return "";
+
+    }
+
+
+    return String(texto)
+
+        .replace(
+            /&/g,
+            "&"
+        )
+
+        .replace(
+            /</g,
+            "<"
+        )
+
+        .replace(
+            />/g,
+            ">"
+        )
+
+        .replace(
+            /"/g,
+                  
+        )
+
+        .replace(
+            /'/g,
+            "'"
+        );
+
+}
+
+
+/* ======================================================
+   MENSAJE
+====================================================== */
+
+function mostrarMensaje(mensaje){
+
+    const toast =
+        document.getElementById(
+            "toast"
+        );
+
+
+    if(!toast){
+
+        return;
+
+    }
+
+
+    toast.textContent =
+        mensaje;
+
+
+    toast.classList.add(
+        "show"
+    );
+
+
+    setTimeout(
+        function(){
+
+            toast.classList.remove(
+                "show"
+            );
+
+        },
+        2500
+    );
+
+}
+
+</script>
+
+</body>
+
+</html>

@@ -1,0 +1,7022 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+
+<div id="modalSeguridadAdmin" style="position:fixed; top:0; left:0; width:100%; height:100%; background:#0f172a; z-index:999999; display:flex; align-items:center; justify-content:center; font-family:sans-serif;">
+  <div style="background:white; padding:24px; border-radius:16px; width:85%; max-width:300px; text-align:center; box-shadow:0 10px 25px rgba(0,0,0,0.5);">
+    <div style="font-size:32px; margin-bottom:8px;">🔐</div>
+    <h3 style="margin:0 0 6px 0; font-size:16px; color:#1e293b;">Área Exclusiva de Administrador</h3>
+    <p style="margin:0 0 14px 0; font-size:11px; color:#64748b;">Los cajeros no tienen acceso a este menú. Ingresa tu PIN de Administrador.</p>
+    <input type="password" id="inputPinAdmin" placeholder="••••" maxlength="6" style="width:100%; padding:12px; font-size:22px; text-align:center; border:1px solid #cbd5e1; border-radius:10px; margin-bottom:12px; box-sizing:border-box; letter-spacing:6px;" />
+    <button onclick="verificarSoloAdmin()" style="width:100%; background:#7c3aed; color:white; border:none; padding:12px; border-radius:10px; font-weight:bold; font-size:13px; cursor:pointer;">Verificar Acceso</button>
+  </div>
+</div>
+
+<script>
+
+/* NUEVO: identificador de este módulo dentro de la
+   configuración global de "Módulos Bloqueados" que se
+   administra desde Gestión de Usuarios. */
+var NOMBRE_MODULO_SEGURIDAD = 'gastos';
+
+
+/* NUEVO: sin configuración guardada todavía, el módulo
+   se mantiene BLOQUEADO por defecto (igual que el
+   comportamiento original), hasta que el Administrador
+   entre a Gestión de Usuarios y lo desbloquee. */
+function moduloRequierePinAdmin(){
+
+    var datos =
+        localStorage.getItem(
+            'pos_db_modulos_bloqueados'
+        );
+
+    if(!datos){
+        return true;
+    }
+
+    try{
+
+        var config =
+            JSON.parse(datos);
+
+        if(
+            !config ||
+            typeof config !== 'object' ||
+            Array.isArray(config)
+        ){
+            return true;
+        }
+
+        return config[NOMBRE_MODULO_SEGURIDAD] !== false;
+
+    }catch(e){
+
+        return true;
+
+    }
+
+}
+
+
+window.addEventListener(
+    'DOMContentLoaded',
+    function(){
+
+        const datosUsuarios =
+            localStorage.getItem(
+                'pos_db_users'
+            );
+
+        if(!datosUsuarios){
+
+            document
+                .getElementById(
+                    'modalSeguridadAdmin'
+                )
+                .style.display =
+                'none';
+
+            return;
+
+        }
+
+        try{
+
+            const usuarios =
+                JSON.parse(
+                    datosUsuarios
+                );
+
+            const existeAdmin =
+                Array.isArray(usuarios) &&
+                usuarios.some(
+                    function(u){
+                        return u.rol ===
+                            'administrador';
+                    }
+                );
+
+            if(
+                !existeAdmin ||
+                !moduloRequierePinAdmin()
+            ){
+
+                document
+                    .getElementById(
+                        'modalSeguridadAdmin'
+                    )
+                    .style.display =
+                    'none';
+
+            }
+
+        }catch(e){
+
+            document
+                .getElementById(
+                    'modalSeguridadAdmin'
+                )
+                .style.display =
+                'none';
+
+        }
+
+    }
+);
+
+
+function verificarSoloAdmin(){
+
+    const pinIngresado =
+        document
+            .getElementById(
+                'inputPinAdmin'
+            )
+            .value
+            .trim();
+
+    const datosUsuarios =
+        localStorage.getItem(
+            'pos_db_users'
+        );
+
+    if(!datosUsuarios){
+
+        document
+            .getElementById(
+                'modalSeguridadAdmin'
+            )
+            .style.display =
+            'none';
+
+        return;
+
+    }
+
+    const usuarios =
+        JSON.parse(
+            datosUsuarios
+        );
+
+    const existeAdmin =
+        usuarios.some(
+            function(u){
+                return u.rol ===
+                    'administrador';
+            }
+        );
+
+    if(
+        !existeAdmin ||
+        !moduloRequierePinAdmin()
+    ){
+
+        document
+            .getElementById(
+                'modalSeguridadAdmin'
+            )
+            .style.display =
+            'none';
+
+        return;
+
+    }
+
+    const usuarioValido =
+        usuarios.find(
+            function(u){
+
+                return (
+                    String(u.pin) ===
+                    String(pinIngresado) &&
+                    u.rol ===
+                    'administrador'
+                );
+
+            }
+        );
+
+    if(usuarioValido){
+
+        document
+            .getElementById(
+                'modalSeguridadAdmin'
+            )
+            .style.display =
+            'none';
+
+    }else{
+
+        alert(
+            "⛔ Acceso denegado. Este menú está restringido únicamente a Administradores."
+        );
+
+        document
+            .getElementById(
+                'inputPinAdmin'
+            )
+            .value =
+            "";
+
+    }
+
+}
+
+</script>
+
+<meta charset="UTF-8">
+
+<meta
+    name="viewport"
+    content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"
+>
+
+<title>Gastos por Proveedor</title>
+
+<style>
+
+*{
+    box-sizing:border-box;
+}
+
+html,
+body{
+    margin:0;
+    padding:0;
+    width:100%;
+    min-height:100%;
+    font-family:Arial,Helvetica,sans-serif;
+    background:#f4f6f8;
+    color:#1f2937;
+}
+
+button,
+input,
+select,
+textarea{
+    font-family:inherit;
+}
+
+button{
+    -webkit-tap-highlight-color:transparent;
+}
+
+.gp-app{
+    width:100%;
+    max-width:700px;
+    min-height:100vh;
+    margin:auto;
+    background:#f4f6f8;
+    padding-bottom:82px;
+}
+
+.gp-header{
+    background:#1f2937;
+    color:#fff;
+    padding:18px 15px;
+}
+
+.gp-header-title{
+    font-size:21px;
+    font-weight:bold;
+    margin-bottom:13px;
+}
+
+.gp-new-button{
+    width:100%;
+    border:0;
+    border-radius:10px;
+    padding:14px;
+    background:#16a34a;
+    color:#fff;
+    font-size:16px;
+    font-weight:bold;
+    cursor:pointer;
+}
+
+.gp-content{
+    padding:15px;
+}
+
+
+/* ================= BUSCADOR ================= */
+
+.gp-search-box{
+    background:#fff;
+    padding:12px;
+    border-radius:12px;
+    margin-bottom:15px;
+    box-shadow:0 2px 8px rgba(0,0,0,.06);
+}
+
+.gp-search-title{
+    font-size:13px;
+    font-weight:bold;
+    margin-bottom:7px;
+}
+
+.gp-search-help{
+    font-size:11px;
+    color:#6b7280;
+    margin-bottom:9px;
+}
+
+.gp-search-box input,
+.gp-search-box select{
+    width:100%;
+    padding:12px;
+    margin:0 0 9px;
+    border:1px solid #d1d5db;
+    border-radius:8px;
+    font-size:15px;
+    background:#fff;
+    outline:none;
+}
+
+.gp-search-box input:focus,
+.gp-search-box select:focus{
+    border-color:#16a34a;
+}
+
+
+/* ================= RESUMEN ================= */
+
+.gp-summary-title{
+    font-size:17px;
+    font-weight:bold;
+    margin-bottom:10px;
+}
+
+.gp-summary{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+    margin-bottom:18px;
+}
+
+.gp-summary-card{
+    background:#fff;
+    padding:14px;
+    border-radius:12px;
+    box-shadow:0 2px 8px rgba(0,0,0,.06);
+}
+
+.gp-summary-label{
+    font-size:12px;
+    color:#6b7280;
+    margin-bottom:5px;
+}
+
+.gp-summary-value{
+    font-size:18px;
+    font-weight:bold;
+}
+
+
+/* ================= TARJETAS ================= */
+
+.gp-card{
+    background:#fff;
+    border-radius:14px;
+    padding:15px;
+    margin-bottom:12px;
+    box-shadow:0 2px 8px rgba(0,0,0,.07);
+}
+
+.gp-card-top{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:10px;
+    margin-bottom:10px;
+}
+
+.gp-provider{
+    font-size:17px;
+    font-weight:bold;
+}
+
+.gp-folio{
+    font-size:12px;
+    color:#6b7280;
+    margin-top:4px;
+}
+
+.gp-status{
+    padding:6px 9px;
+    border-radius:20px;
+    font-size:11px;
+    font-weight:bold;
+    white-space:nowrap;
+}
+
+.gp-status-paid{
+    background:#dcfce7;
+    color:#166534;
+}
+
+.gp-status-pending{
+    background:#fee2e2;
+    color:#991b1b;
+}
+
+.gp-status-partial{
+    background:#fef3c7;
+    color:#92400e;
+}
+
+.gp-info{
+    border-top:1px solid #e5e7eb;
+    padding-top:10px;
+}
+
+.gp-info-row{
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    padding:5px 0;
+    font-size:13px;
+}
+
+.gp-info-label{
+    color:#6b7280;
+    flex-shrink:0;
+}
+
+.gp-info-value{
+    text-align:right;
+    word-break:break-word;
+}
+
+.gp-total{
+    font-weight:bold;
+}
+
+.gp-balance{
+    font-weight:bold;
+    color:#b91c1c;
+}
+
+.gp-actions{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+    margin-top:13px;
+}
+
+.gp-action{
+    border:0;
+    border-radius:8px;
+    padding:10px;
+    font-weight:bold;
+    cursor:pointer;
+}
+
+.gp-edit{
+    background:#e0f2fe;
+    color:#0369a1;
+}
+
+.gp-delete{
+    background:#fee2e2;
+    color:#b91c1c;
+}
+
+
+/* ================= VACÍO ================= */
+
+.gp-empty{
+    background:#fff;
+    border-radius:14px;
+    padding:35px 20px;
+    text-align:center;
+    color:#6b7280;
+    box-shadow:0 2px 8px rgba(0,0,0,.06);
+}
+
+.gp-empty-icon{
+    font-size:40px;
+    margin-bottom:10px;
+}
+
+
+/* ================= MODAL ================= */
+
+.gp-modal{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.55);
+    display:none;
+    align-items:flex-end;
+    justify-content:center;
+    z-index:99999;
+}
+
+.gp-modal.gp-visible{
+    display:flex;
+}
+
+.gp-modal-box{
+    width:100%;
+    max-width:700px;
+    max-height:94vh;
+    overflow-y:auto;
+    background:#fff;
+    border-radius:18px 18px 0 0;
+    padding:18px;
+}
+
+.gp-modal-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:15px;
+}
+
+.gp-modal-title{
+    font-size:20px;
+    font-weight:bold;
+}
+
+.gp-close{
+    width:38px;
+    height:38px;
+    border:0;
+    border-radius:50%;
+    background:#f3f4f6;
+    font-size:22px;
+    cursor:pointer;
+}
+
+
+/* ================= FORMULARIO ================= */
+
+.gp-form-group{
+    margin-bottom:13px;
+}
+
+.gp-form-group label{
+    display:block;
+    font-size:13px;
+    font-weight:bold;
+    margin-bottom:6px;
+}
+
+.gp-required{
+    color:#dc2626;
+}
+
+.gp-form-group input,
+.gp-form-group select,
+.gp-form-group textarea{
+    width:100%;
+    padding:12px;
+    border:1px solid #d1d5db;
+    border-radius:8px;
+    font-size:15px;
+    background:#fff;
+    outline:none;
+}
+
+.gp-form-group textarea{
+    min-height:80px;
+    resize:vertical;
+}
+
+.gp-form-group input:focus,
+.gp-form-group select:focus,
+.gp-form-group textarea:focus{
+    border-color:#16a34a;
+}
+
+.gp-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+}
+
+.gp-readonly{
+    background:#f3f4f6!important;
+    font-weight:bold;
+}
+
+.gp-form-actions{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+    margin-top:18px;
+}
+
+.gp-cancel,
+.gp-save{
+    border:0;
+    border-radius:9px;
+    padding:13px;
+    font-weight:bold;
+    font-size:15px;
+    cursor:pointer;
+}
+
+.gp-cancel{
+    background:#e5e7eb;
+    color:#374151;
+}
+
+.gp-save{
+    background:#16a34a;
+    color:#fff;
+}
+
+
+/* =====================================================
+   IDEA 3
+   ARTÍCULO DE INVENTARIO
+===================================================== */
+
+.gp-articulo-box{
+    background:#f9fafb;
+    border:1px solid #e5e7eb;
+    border-radius:10px;
+    padding:12px;
+}
+
+.gp-articulo-help{
+    font-size:11px;
+    color:#6b7280;
+    margin-bottom:9px;
+}
+
+.gp-articulo-resultados{
+    max-height:190px;
+    overflow-y:auto;
+    margin-top:7px;
+}
+
+.gp-articulo-item{
+    width:100%;
+    text-align:left;
+    border:1px solid #e5e7eb;
+    background:#fff;
+    border-radius:8px;
+    padding:10px;
+    margin-bottom:6px;
+    cursor:pointer;
+}
+
+.gp-articulo-item:hover{
+    border-color:#16a34a;
+}
+
+.gp-articulo-nombre{
+    font-weight:bold;
+    font-size:14px;
+}
+
+.gp-articulo-meta{
+    font-size:11px;
+    color:#6b7280;
+    margin-top:3px;
+}
+
+.gp-articulo-seleccionado{
+    background:#ecfdf5;
+    border:1px solid #86efac;
+    border-radius:9px;
+    padding:11px;
+    margin-top:8px;
+}
+
+.gp-articulo-seleccionado-title{
+    font-size:12px;
+    color:#166534;
+    font-weight:bold;
+    margin-bottom:4px;
+}
+
+.gp-articulo-seleccionado-name{
+    font-size:15px;
+    font-weight:bold;
+}
+
+.gp-articulo-no-existe{
+    background:#fff7ed;
+    border:1px solid #fdba74;
+    color:#9a3412;
+    border-radius:9px;
+    padding:11px;
+    margin-top:8px;
+    font-size:12px;
+}
+
+.gp-articulo-oculto{
+    display:none;
+}
+
+
+/* =====================================================
+   NUEVO
+   LISTA DE ARTÍCULOS (MULTI-ARTÍCULO)
+===================================================== */
+
+.gp-articulos-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:10px;
+    margin-top:12px;
+    margin-bottom:8px;
+}
+
+.gp-articulos-contador{
+    font-size:11px;
+    color:#6b7280;
+    font-weight:bold;
+}
+
+.gp-btn-agregar-articulo{
+    border:0;
+    border-radius:8px;
+    padding:10px 14px;
+    background:#16a34a;
+    color:#fff;
+    font-weight:bold;
+    font-size:13px;
+    cursor:pointer;
+    white-space:nowrap;
+}
+
+.gp-btn-agregar-articulo:disabled{
+    background:#9ca3af;
+    cursor:not-allowed;
+}
+
+.gp-articulos-lista{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+}
+
+.gp-item-fila{
+    background:#fff;
+    border:1px solid #e5e7eb;
+    border-radius:10px;
+    padding:10px;
+}
+
+.gp-item-fila-top{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:8px;
+}
+
+.gp-item-fila-nombre{
+    font-weight:bold;
+    font-size:13px;
+}
+
+.gp-item-fila-eliminar{
+    border:0;
+    background:#fee2e2;
+    color:#b91c1c;
+    width:28px;
+    height:28px;
+    border-radius:8px;
+    font-weight:bold;
+    cursor:pointer;
+    flex-shrink:0;
+}
+
+.gp-item-fila-meta{
+    font-size:11px;
+    color:#6b7280;
+    margin-top:3px;
+}
+
+
+/* =====================================================
+   IDEA 4
+   CAMPOS MONETARIOS
+===================================================== */
+
+.gp-money-wrap{
+    position:relative;
+}
+
+.gp-money-symbol{
+    position:absolute;
+    left:12px;
+    top:50%;
+    transform:translateY(-50%);
+    font-weight:bold;
+    color:#374151;
+    z-index:2;
+}
+
+.gp-money-input{
+    padding-left:28px!important;
+}
+
+.gp-money-input.gp-readonly{
+    color:#1f2937;
+}
+
+
+/* ================= MENSAJE ================= */
+
+.gp-toast{
+    position:fixed;
+    left:50%;
+    bottom:82px;
+    transform:translate(-50%,20px);
+    background:#1f2937;
+    color:#fff;
+    padding:12px 18px;
+    border-radius:10px;
+    font-size:14px;
+    opacity:0;
+    pointer-events:none;
+    transition:.25s;
+    z-index:100000;
+    max-width:90%;
+    text-align:center;
+}
+
+.gp-toast-show{
+    opacity:1;
+    transform:translate(-50%,0);
+}
+
+
+/* =====================================================
+   SUBMENÚ INFERIOR
+===================================================== */
+
+.gp-bottom-nav{
+    position:fixed;
+    left:0;
+    right:0;
+    bottom:0;
+    width:100%;
+    max-width:700px;
+    margin:0 auto;
+    height:70px;
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    background:#ffffff;
+    border-top:1px solid #d1d5db;
+    box-shadow:0 -3px 12px rgba(0,0,0,.10);
+    z-index:99990;
+}
+
+.gp-nav-button{
+    border:0;
+    background:#fff;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:3px;
+    cursor:pointer;
+    padding:5px 2px;
+    color:#6b7280;
+}
+
+.gp-nav-icon{
+    font-size:21px;
+    line-height:1;
+}
+
+.gp-nav-label{
+    font-size:10px;
+    font-weight:bold;
+}
+
+.gp-nav-button.gp-nav-active.gp-nav-gastos{
+    color:#2563eb;
+}
+
+.gp-nav-button.gp-nav-active.gp-nav-pendientes{
+    color:#dc2626;
+}
+
+.gp-nav-button.gp-nav-active.gp-nav-proximos{
+    color:#059669;
+}
+
+.gp-nav-button.gp-nav-active.gp-nav-reportes{
+    color:#7c3aed;
+}
+
+
+/* =====================================================
+   PANEL DE SUBMENÚ
+===================================================== */
+
+.gp-subpanel{
+    display:none;
+    background:#fff;
+    border-radius:14px;
+    margin-bottom:15px;
+    padding:15px;
+    box-shadow:0 2px 8px rgba(0,0,0,.07);
+}
+
+.gp-subpanel.gp-subpanel-visible{
+    display:block;
+}
+
+.gp-subpanel-title{
+    font-size:18px;
+    font-weight:bold;
+    margin-bottom:5px;
+}
+
+.gp-subpanel-description{
+    font-size:12px;
+    color:#6b7280;
+    margin-bottom:13px;
+}
+
+
+/* =====================================================
+   REPORTE
+===================================================== */
+
+.gp-report-box{
+    background:#f9fafb;
+    border:1px solid #e5e7eb;
+    border-radius:10px;
+    padding:12px;
+}
+
+.gp-report-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+}
+
+.gp-report-field label{
+    display:block;
+    font-size:12px;
+    font-weight:bold;
+    margin-bottom:5px;
+}
+
+.gp-report-field input{
+    width:100%;
+    padding:11px;
+    border:1px solid #d1d5db;
+    border-radius:8px;
+    background:#fff;
+    font-size:14px;
+}
+
+.gp-report-button{
+    width:100%;
+    margin-top:10px;
+    padding:12px;
+    border:0;
+    border-radius:8px;
+    background:#7c3aed;
+    color:#fff;
+    font-weight:bold;
+    cursor:pointer;
+}
+
+.gp-report-results{
+    margin-top:12px;
+}
+
+.gp-report-card{
+    background:#fff;
+    border:1px solid #e5e7eb;
+    border-radius:10px;
+    padding:12px;
+    margin-bottom:8px;
+}
+
+.gp-report-label{
+    font-size:11px;
+    color:#6b7280;
+    margin-bottom:4px;
+}
+
+.gp-report-value{
+    font-size:19px;
+    font-weight:bold;
+}
+
+
+/* =====================================================
+   PENDIENTES / PRÓXIMOS
+===================================================== */
+
+.gp-special-card{
+    background:#fff;
+    border-radius:12px;
+    border-left:5px solid #dc2626;
+    padding:13px;
+    margin-bottom:10px;
+    box-shadow:0 2px 7px rgba(0,0,0,.06);
+}
+
+.gp-special-card.gp-upcoming{
+    border-left-color:#059669;
+}
+
+.gp-special-provider{
+    font-size:16px;
+    font-weight:bold;
+    margin-bottom:6px;
+}
+
+.gp-special-row{
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+    padding:4px 0;
+    font-size:13px;
+}
+
+.gp-special-label{
+    color:#6b7280;
+}
+
+.gp-special-value{
+    text-align:right;
+    font-weight:bold;
+}
+
+.gp-special-balance{
+    color:#b91c1c;
+}
+
+.gp-special-date{
+    color:#059669;
+}
+
+.gp-main-hidden{
+    display:none;
+}
+
+
+@media(max-width:420px){
+
+    .gp-grid{
+        grid-template-columns:1fr;
+        gap:0;
+    }
+
+    .gp-report-grid{
+        grid-template-columns:1fr;
+    }
+
+    .gp-bottom-nav{
+        height:66px;
+    }
+
+    .gp-nav-icon{
+        font-size:20px;
+    }
+
+    .gp-nav-label{
+        font-size:9px;
+    }
+
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="gp-app">
+
+    <div class="gp-header">
+
+        <div class="gp-header-title">
+            Gastos por Proveedor
+        </div>
+
+        <button
+            type="button"
+            id="gpBtnNuevo"
+            class="gp-new-button">
+
+            + Nuevo gasto
+
+        </button>
+
+    </div>
+
+
+    <div class="gp-content">
+
+
+        <div
+            id="gpPanelPendientes"
+            class="gp-subpanel">
+
+            <div class="gp-subpanel-title">
+                Pagos pendientes
+            </div>
+
+            <div class="gp-subpanel-description">
+                Proveedores con saldo pendiente de pago.
+            </div>
+
+            <div id="gpPendientesLista"></div>
+
+        </div>
+
+
+        <div
+            id="gpPanelProximos"
+            class="gp-subpanel">
+
+            <div class="gp-subpanel-title">
+                Próximos pagos
+            </div>
+
+            <div class="gp-subpanel-description">
+                Gastos pendientes ordenados por fecha límite de pago.
+            </div>
+
+            <div id="gpProximosLista"></div>
+
+        </div>
+
+
+        <div
+            id="gpPanelReportes"
+            class="gp-subpanel">
+
+            <div class="gp-subpanel-title">
+                Reportes
+            </div>
+
+            <div class="gp-subpanel-description">
+                Consulta los gastos realizados dentro de un periodo.
+            </div>
+
+            <div class="gp-report-box">
+
+                <div class="gp-report-grid">
+
+                    <div class="gp-report-field">
+
+                        <label>
+                            Fecha inicial
+                        </label>
+
+                        <input
+                            type="date"
+                            id="gpReporteFechaInicio">
+
+                    </div>
+
+
+                    <div class="gp-report-field">
+
+                        <label>
+                            Fecha final
+                        </label>
+
+                        <input
+                            type="date"
+                            id="gpReporteFechaFin">
+
+                    </div>
+
+                </div>
+
+
+                <button
+                    type="button"
+                    id="gpBtnReporte"
+                    class="gp-report-button">
+
+                    Generar reporte
+
+                </button>
+
+
+                <div
+                    id="gpReporteResultados"
+                    class="gp-report-results">
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div id="gpContenidoPrincipal">
+
+
+            <div class="gp-search-box">
+
+                <div class="gp-search-title">
+                    Buscar gasto
+                </div>
+
+                <div class="gp-search-help">
+                    Busca por proveedor, folio, concepto o artículo.
+                </div>
+
+                <input
+                    type="search"
+                    id="gpBuscar"
+                    placeholder="Buscar proveedor, folio, concepto o artículo..."
+                    autocomplete="off">
+
+                <select id="gpFiltroProveedor">
+
+                    <option value="">
+                        Todos los proveedores
+                    </option>
+
+                </select>
+
+                <select id="gpFiltroEstado">
+
+                    <option value="">
+                        Todos los estados
+                    </option>
+
+                    <option value="Pendiente">
+                        Pendiente
+                    </option>
+
+                    <option value="Abonado">
+                        Abonado
+                    </option>
+
+                    <option value="Pagado">
+                        Pagado
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            <div class="gp-summary-title">
+                Resumen
+            </div>
+
+            <div class="gp-summary">
+
+                <div class="gp-summary-card">
+
+                    <div class="gp-summary-label">
+                        Total compras
+                    </div>
+
+                    <div
+                        class="gp-summary-value"
+                        id="gpTotalCompras">
+
+                        $0.00
+
+                    </div>
+
+                </div>
+
+
+                <div class="gp-summary-card">
+
+                    <div class="gp-summary-label">
+                        Total pagado
+                    </div>
+
+                    <div
+                        class="gp-summary-value"
+                        id="gpTotalPagado">
+
+                        $0.00
+
+                    </div>
+
+                </div>
+
+
+                <div class="gp-summary-card">
+
+                    <div class="gp-summary-label">
+                        Total pendiente
+                    </div>
+
+                    <div
+                        class="gp-summary-value"
+                        id="gpTotalPendiente">
+
+                        $0.00
+
+                    </div>
+
+                </div>
+
+
+                <div class="gp-summary-card">
+
+                    <div class="gp-summary-label">
+                        Cantidad de gastos
+                    </div>
+
+                    <div
+                        class="gp-summary-value"
+                        id="gpCantidad">
+
+                        0
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <div id="gpLista"></div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- =====================================================
+     MODAL
+===================================================== -->
+
+<div
+    id="gpModal"
+    class="gp-modal">
+
+    <div class="gp-modal-box">
+
+        <div class="gp-modal-header">
+
+            <div
+                id="gpModalTitulo"
+                class="gp-modal-title">
+
+                Nuevo gasto
+
+            </div>
+
+            <button
+                type="button"
+                id="gpBtnCerrar"
+                class="gp-close">
+
+                ×
+
+            </button>
+
+        </div>
+
+
+        <form id="gpForm">
+
+            <input
+                type="hidden"
+                id="gpId">
+
+
+            <input
+                type="hidden"
+                id="gpArticuloId">
+
+            <input
+                type="hidden"
+                id="gpArticuloCodigo">
+
+            <input
+                type="hidden"
+                id="gpArticuloNombre">
+
+            <input
+                type="hidden"
+                id="gpArticuloCategoria">
+
+
+            <div class="gp-grid">
+
+                <div class="gp-form-group">
+
+                    <label>
+                        Folio
+                    </label>
+
+                    <input
+                        type="text"
+                        id="gpFolio"
+                        placeholder="Ej. FAC-001">
+
+                </div>
+
+
+                <div class="gp-form-group">
+
+                    <label>
+                        Fecha de compra
+                        <span class="gp-required">*</span>
+                    </label>
+
+                    <input
+                        type="date"
+                        id="gpFechaCompra"
+                        required>
+
+                </div>
+
+            </div>
+
+
+            <div class="gp-form-group">
+
+                <label>
+                    Proveedor
+                    <span class="gp-required">*</span>
+                </label>
+
+                <select
+                    id="gpProveedor"
+                    required>
+
+                    <option value="">
+                        Selecciona un proveedor
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            <!-- =================================================
+                 IDEA 3
+                 TIPO DE GASTO
+            ================================================== -->
+
+            <div class="gp-form-group">
+
+                <label>
+                    Tipo de gasto
+                    <span class="gp-required">*</span>
+                </label>
+
+                <select
+                    id="gpTipoGasto"
+                    required>
+
+                    <option value="articulo">
+                        Artículo de inventario
+                    </option>
+
+                    <option value="otro">
+                        Otro gasto / servicio
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            <!-- =================================================
+                 IDEA 3
+                 ARTÍCULO
+            ================================================== -->
+
+            <div
+                id="gpArticuloContainer"
+                class="gp-form-group">
+
+                <label>
+                    Artículo de inventario
+                    <span class="gp-required">*</span>
+                </label>
+
+                <div class="gp-articulo-box">
+
+                    <div class="gp-articulo-help">
+                        Busca el artículo por nombre o código. Seleccionarlo no modifica las existencias del inventario.
+                    </div>
+
+                    <input
+                        type="search"
+                        id="gpBuscarArticulo"
+                        placeholder="Buscar artículo o código..."
+                        autocomplete="off">
+
+                    <select
+                        id="gpFiltroCategoriaArticulo">
+
+                        <option value="">
+                            Todas las categorías
+                        </option>
+
+                    </select>
+
+                    <div
+                        id="gpArticuloResultados"
+                        class="gp-articulo-resultados">
+                    </div>
+
+                    <div
+                        id="gpArticuloSeleccionado"
+                        class="gp-articulo-seleccionado gp-articulo-oculto">
+
+                        <div class="gp-articulo-seleccionado-title">
+                            Artículo seleccionado
+                        </div>
+
+                        <div
+                            id="gpArticuloSeleccionadoNombre"
+                            class="gp-articulo-seleccionado-name">
+                        </div>
+
+                        <div
+                            id="gpArticuloSeleccionadoMeta"
+                            class="gp-articulo-meta">
+                        </div>
+
+                    </div>
+
+                    <div
+                        id="gpArticuloNoExiste"
+                        class="gp-articulo-no-existe gp-articulo-oculto">
+
+                        <strong>
+                            ⚠️ Artículo no existente
+                        </strong>
+
+                        <br>
+
+                        Este artículo no está registrado en el inventario. Favor de agregarlo primero en Agregar Artículos.
+
+                    </div>
+
+
+                    <!-- =========================================
+                         NUEVO
+                         LISTA DE ARTÍCULOS (MULTI-ARTÍCULO)
+                    ========================================== -->
+
+                    <div class="gp-articulos-header">
+
+                        <div
+                            id="gpArticulosContador"
+                            class="gp-articulos-contador">
+
+                            0 / 50 artículos agregados
+
+                        </div>
+
+                        <button
+                            type="button"
+                            id="gpBtnAgregarArticulo"
+                            class="gp-btn-agregar-articulo">
+
+                            + Agregar artículo
+
+                        </button>
+
+                    </div>
+
+                    <div
+                        id="gpArticulosLista"
+                        class="gp-articulos-lista">
+
+                        <div class="gp-articulo-help">
+                            Aún no has agregado artículos a la lista.
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- =================================================
+                 CONCEPTO
+            ================================================== -->
+
+            <div
+                id="gpConceptoContainer"
+                class="gp-form-group">
+
+                <label>
+                    Concepto / descripción
+                    <span class="gp-required">*</span>
+                </label>
+
+                <textarea
+                    id="gpConcepto"
+                    placeholder="Describe qué se compró..."
+                    required></textarea>
+
+            </div>
+
+
+            <!-- =================================================
+                 IDEA 4
+                 SUBTOTAL / IVA
+            ================================================== -->
+
+            <div class="gp-grid">
+
+                <div class="gp-form-group">
+
+                    <label>
+                        Subtotal
+                    </label>
+
+                    <div class="gp-money-wrap">
+
+                        <span class="gp-money-symbol">
+                            $
+                        </span>
+
+                        <input
+                            type="text"
+                            id="gpSubtotal"
+                            class="gp-money-input gp-readonly"
+                            inputmode="decimal"
+                            readonly
+                            value="0.00">
+
+                    </div>
+
+                </div>
+
+
+                <div class="gp-form-group">
+
+                    <label>
+                        IVA %
+                    </label>
+
+                    <input
+                        type="text"
+                        id="gpIvaPorcentaje"
+                        inputmode="decimal"
+                        value="16">
+
+                </div>
+
+            </div>
+
+
+            <div class="gp-grid">
+
+                <div class="gp-form-group">
+
+                    <label>
+                        IVA
+                    </label>
+
+                    <div class="gp-money-wrap">
+
+                        <span class="gp-money-symbol">
+                            $
+                        </span>
+
+                        <input
+                            type="text"
+                            id="gpIva"
+                            class="gp-money-input gp-readonly"
+                            readonly
+                            value="0.00">
+
+                    </div>
+
+                </div>
+
+
+                <div class="gp-form-group">
+
+                    <label>
+                        Descuento
+                    </label>
+
+                    <div class="gp-money-wrap">
+
+                        <span class="gp-money-symbol">
+                            $
+                        </span>
+
+                        <input
+                            type="text"
+                            id="gpDescuento"
+                            class="gp-money-input"
+                            inputmode="decimal"
+                            value="0">
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- =================================================
+                 TOTAL DE FACTURA
+            ================================================== -->
+
+            <div class="gp-form-group">
+
+                <label>
+                    Total de la cuenta / factura
+                    <span class="gp-required">*</span>
+                </label>
+
+                <div class="gp-money-wrap">
+
+                    <span class="gp-money-symbol">
+                        $
+                    </span>
+
+                    <input
+                        type="text"
+                        id="gpTotal"
+                        class="gp-money-input"
+                        inputmode="decimal"
+                        placeholder="0.00"
+                        required>
+
+                </div>
+
+            </div>
+
+
+            <div class="gp-grid">
+
+                <div class="gp-form-group">
+
+                    <label>
+                        Forma de pago
+                    </label>
+
+                    <select id="gpFormaPago">
+
+                        <option value="Efectivo">
+                            Efectivo
+                        </option>
+
+                        <option value="Transferencia">
+                            Transferencia
+                        </option>
+
+                        <option value="Tarjeta">
+                            Tarjeta
+                        </option>
+
+                        <option value="Cheque">
+                            Cheque
+                        </option>
+
+                        <option value="Otro">
+                            Otro
+                        </option>
+
+                    </select>
+
+                </div>
+
+
+                <div class="gp-form-group">
+
+                    <label>
+                        Condición de pago
+                    </label>
+
+                    <select id="gpCondicion">
+
+                        <option value="Contado">
+                            Contado
+                        </option>
+
+                        <option value="Crédito">
+                            Crédito
+                        </option>
+
+                    </select>
+
+                </div>
+
+            </div>
+
+
+            <div class="gp-form-group">
+
+                <label>
+                    Fecha límite de pago
+                </label>
+
+                <input
+                    type="date"
+                    id="gpVencimiento">
+
+            </div>
+
+
+            <!-- =================================================
+                 PAGO REALIZADO
+            ================================================== -->
+
+            <div class="gp-form-group">
+
+                <label>
+                    Pago realizado
+                </label>
+
+                <div class="gp-money-wrap">
+
+                    <span class="gp-money-symbol">
+                        $
+                    </span>
+
+                    <input
+                        type="text"
+                        id="gpPagado"
+                        class="gp-money-input"
+                        inputmode="decimal"
+                        value="0">
+
+                </div>
+
+            </div>
+
+
+            <div class="gp-form-group">
+
+                <label>
+                    Saldo pendiente
+                </label>
+
+                <div class="gp-money-wrap">
+
+                    <span class="gp-money-symbol">
+                        $
+                    </span>
+
+                    <input
+                        type="text"
+                        id="gpSaldo"
+                        class="gp-money-input gp-readonly"
+                        readonly
+                        value="0.00">
+
+                </div>
+
+            </div>
+
+
+            <div class="gp-form-group">
+
+                <label>
+                    Notas
+                </label>
+
+                <textarea
+                    id="gpNotas"
+                    placeholder="Observaciones del gasto..."></textarea>
+
+            </div>
+
+
+            <div class="gp-form-actions">
+
+                <button
+                    type="button"
+                    id="gpBtnCancelar"
+                    class="gp-cancel">
+
+                    Cancelar
+
+                </button>
+
+
+                <button
+                    type="submit"
+                    class="gp-save">
+
+                    Guardar gasto
+
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+
+</div>
+
+
+<div
+    id="gpToast"
+    class="gp-toast">
+</div>
+
+
+<nav
+    id="gpBottomNav"
+    class="gp-bottom-nav">
+
+    <button
+        type="button"
+        class="gp-nav-button gp-nav-active gp-nav-gastos"
+        id="gpNavGastos">
+
+        <span class="gp-nav-icon">💰</span>
+        <span class="gp-nav-label">Gastos</span>
+
+    </button>
+
+
+    <button
+        type="button"
+        class="gp-nav-button gp-nav-pendientes"
+        id="gpNavPendientes">
+
+        <span class="gp-nav-icon">⚠️</span>
+        <span class="gp-nav-label">Pendientes</span>
+
+    </button>
+
+
+    <button
+        type="button"
+        class="gp-nav-button gp-nav-proximos"
+        id="gpNavProximos">
+
+        <span class="gp-nav-icon">📅</span>
+        <span class="gp-nav-label">Próximos</span>
+
+    </button>
+
+
+    <button
+        type="button"
+        class="gp-nav-button gp-nav-reportes"
+        id="gpNavReportes">
+
+        <span class="gp-nav-icon">📊</span>
+        <span class="gp-nav-label">Reportes</span>
+
+    </button>
+
+</nav>
+
+
+<script>
+
+(function(){
+
+"use strict";
+
+
+/* =====================================================
+   CONFIGURACIÓN
+===================================================== */
+
+var GP_GASTOS_KEY =
+    "gastosProveedores";
+
+var GP_PROVEEDORES_KEY =
+    "directorioProveedores";
+
+var gpGastos = [];
+var gpProveedores = [];
+var gpInventario = [];
+var gpInicializado = false;
+
+/* =====================================================
+   NUEVO
+   LISTA DE ARTÍCULOS POR GASTO (MULTI-ARTÍCULO)
+===================================================== */
+
+var gpArticulosActuales = [];
+
+/* =====================================================
+   NUEVO
+   DEPURACIÓN TRIMESTRAL DE VENTAS Y GASTOS
+
+   Cada 3 meses (a partir del registro más antiguo de cada
+   tipo), se avisa 7 días antes, se recuerda 3 días después
+   de ese primer aviso, y a los 7 días del primer aviso se
+   elimina SOLO lo que ya tiene más de 3 meses de antigüedad
+   (lo reciente se conserva). El Kárdex no se toca.
+
+   Este bloque es idéntico en Caja, Gestión de Gastos y
+   Respaldo y Restauración — es el único lugar donde puede
+   "revisarse" el ciclo, ya que no existe un proceso en
+   segundo plano real (cada módulo es independiente).
+===================================================== */
+
+const GP_DEPURACION_MESES = 3;
+const GP_DEPURACION_AVISO_DIAS = 7;
+const GP_DEPURACION_SEGUNDO_AVISO_DIAS = 4; // 3 días después del primer aviso
+
+function gpDepuracionSumarMeses(fechaISO, meses) {
+  const f = new Date(fechaISO);
+  f.setMonth(f.getMonth() + meses);
+  return f.toISOString();
+}
+
+function gpDepuracionObtenerEstado(claveEstado) {
+  const data = localStorage.getItem(claveEstado);
+  if (!data) return null;
+  try {
+    return JSON.parse(data);
+  } catch (e) {
+    return null;
+  }
+}
+
+function gpDepuracionGuardarEstado(claveEstado, estado) {
+  localStorage.setItem(claveEstado, JSON.stringify(estado));
+}
+
+function gpDepuracionContenedorAvisos() {
+  let cont = document.getElementById('gpContenedorAvisosDepuracion');
+  if (!cont) {
+    cont = document.createElement('div');
+    cont.id = 'gpContenedorAvisosDepuracion';
+    cont.style.cssText = 'position:fixed; top:0; left:0; right:0; z-index:999998; display:flex; flex-direction:column; gap:6px; padding:8px; pointer-events:none;';
+    document.body.appendChild(cont);
+  }
+  return cont;
+}
+
+function gpDepuracionMostrarAviso(mensaje, color) {
+  const cont = gpDepuracionContenedorAvisos();
+  const aviso = document.createElement('div');
+  aviso.style.cssText = `background:${color}; color:#fff; font-family:sans-serif; font-size:12px; font-weight:bold; line-height:1.4; padding:10px 12px; border-radius:10px; box-shadow:0 4px 10px rgba(0,0,0,.25); pointer-events:auto; display:flex; justify-content:space-between; align-items:flex-start; gap:10px; max-width:480px; margin:0 auto; width:100%; box-sizing:border-box;`;
+  aviso.innerHTML = `<span>${mensaje}</span><button style="background:rgba(255,255,255,.25); border:none; color:#fff; border-radius:6px; padding:4px 8px; font-weight:bold; cursor:pointer; flex-shrink:0;" onclick="this.parentElement.remove()">✕</button>`;
+  cont.appendChild(aviso);
+}
+
+// tipo: 'ventas' | 'gastos'
+// claveDatos: clave en localStorage donde viven los registros
+// campoFecha: nombre del campo de fecha dentro de cada registro
+function gpVerificarDepuracion(tipo, claveDatos, campoFecha) {
+  const claveEstado = 'pos_depuracion_' + tipo;
+  let estado = gpDepuracionObtenerEstado(claveEstado);
+
+  const datosCrudos = localStorage.getItem(claveDatos);
+  let registros = [];
+  try {
+    registros = datosCrudos ? JSON.parse(datosCrudos) : [];
+  } catch (e) {
+    registros = [];
+  }
+
+  if (!Array.isArray(registros) || registros.length === 0) {
+    return; // sin datos todavía, sin ciclo que revisar
+  }
+
+  const etiqueta = tipo === 'ventas' ? 'ventas' : 'gastos';
+
+  if (!estado || !estado.fechaAncla) {
+    // Primer ciclo: se ancla a la fecha del registro más antiguo existente
+    const fechas = registros.map(r => r[campoFecha]).filter(Boolean).sort();
+    const fechaAncla = fechas[0] || new Date().toISOString();
+    estado = {
+      fechaAncla: fechaAncla,
+      proximoCorte: gpDepuracionSumarMeses(fechaAncla, GP_DEPURACION_MESES),
+      aviso7Mostrado: false,
+      aviso3Mostrado: false
+    };
+    gpDepuracionGuardarEstado(claveEstado, estado);
+  }
+
+  const ahora = new Date();
+  const proximoCorte = new Date(estado.proximoCorte);
+  const msPorDia = 24 * 60 * 60 * 1000;
+  const diasParaCorte = (proximoCorte - ahora) / msPorDia;
+  const fechaCorteTexto = proximoCorte.toLocaleDateString();
+
+  if (diasParaCorte <= 0) {
+    // Ejecutar depuración: eliminar solo lo que ya tiene más de 3 meses
+    const limite = new Date(ahora);
+    limite.setMonth(limite.getMonth() - GP_DEPURACION_MESES);
+
+    const registrosConservados = registros.filter(r => {
+      const f = r[campoFecha] ? new Date(r[campoFecha]) : null;
+      return !f || isNaN(f.getTime()) || f >= limite; // sin fecha válida = se conserva por seguridad
+    });
+
+    const totalEliminados = registros.length - registrosConservados.length;
+    localStorage.setItem(claveDatos, JSON.stringify(registrosConservados));
+
+    estado.proximoCorte = gpDepuracionSumarMeses(estado.proximoCorte, GP_DEPURACION_MESES);
+    estado.aviso7Mostrado = false;
+    estado.aviso3Mostrado = false;
+    gpDepuracionGuardarEstado(claveEstado, estado);
+
+    if (totalEliminados > 0) {
+      gpDepuracionMostrarAviso(
+        `🧹 Depuración automática: se eliminaron ${totalEliminados} registro(s) de ${etiqueta} con más de 3 meses de antigüedad. Tu información reciente sigue intacta.`,
+        '#475569'
+      );
+    }
+    return;
+  }
+
+  if (diasParaCorte <= GP_DEPURACION_AVISO_DIAS && !estado.aviso7Mostrado) {
+    estado.aviso7Mostrado = true;
+    gpDepuracionGuardarEstado(claveEstado, estado);
+    gpDepuracionMostrarAviso(
+      `⚠️ Aviso: el ${fechaCorteTexto} se eliminará automáticamente la información de ${etiqueta} con más de 3 meses de antigüedad, para mantener el sistema saludable. Genera un respaldo desde "Respaldo y Restauración" si quieres conservarla.`,
+      '#d97706'
+    );
+    return;
+  }
+
+  if (diasParaCorte <= GP_DEPURACION_SEGUNDO_AVISO_DIAS && estado.aviso7Mostrado && !estado.aviso3Mostrado) {
+    estado.aviso3Mostrado = true;
+    gpDepuracionGuardarEstado(claveEstado, estado);
+    gpDepuracionMostrarAviso(
+      `⏰ Recordatorio: el ${fechaCorteTexto} se eliminará la información de ${etiqueta} con más de 3 meses de antigüedad. ¿Ya generaste tu respaldo?`,
+      '#dc2626'
+    );
+    return;
+  }
+}
+
+function gpDepuracionRevisarTodo() {
+  gpVerificarDepuracion('ventas', 'pos_db_ventas', 'fechaISO');
+  gpVerificarDepuracion('gastos', 'gastosProveedores', 'fechaRegistro');
+}
+
+
+var GP_MAX_ARTICULOS = 50;
+
+
+/* =====================================================
+   UTILIDADES
+===================================================== */
+
+function gpId(id){
+
+    return document.getElementById(id);
+
+}
+
+
+function gpLeerJSON(clave,valorDefault){
+
+    try{
+
+        var datos =
+            localStorage.getItem(
+                clave
+            );
+
+        if(!datos){
+            return valorDefault;
+        }
+
+        var resultado =
+            JSON.parse(datos);
+
+        return resultado;
+
+    }catch(error){
+
+        console.log(
+            "Error leyendo:",
+            clave,
+            error
+        );
+
+        return valorDefault;
+
+    }
+
+}
+
+
+function gpGuardarJSON(clave,datos){
+
+    try{
+
+        localStorage.setItem(
+            clave,
+            JSON.stringify(datos)
+        );
+
+        return true;
+
+    }catch(error){
+
+        console.log(
+            "Error guardando:",
+            clave,
+            error
+        );
+
+        return false;
+
+    }
+
+}
+
+
+/* =====================================================
+   ESCAPE HTML
+===================================================== */
+
+function gpEscapar(texto){
+
+    return String(
+        texto === null ||
+        texto === undefined
+        ? ""
+        : texto
+    )
+    .replace(
+        /&/g,
+        "&"
+    )
+    .replace(
+        /</g,
+        "<"
+    )
+    .replace(
+        />/g,
+        ">"
+    )
+    .replace(
+        /"/g,
+      
+    )
+    .replace(
+        /'/g,
+        "'"
+    );
+
+}
+
+
+function gpEscaparAttr(texto){
+
+    return String(
+        texto === null ||
+        texto === undefined
+        ? ""
+        : texto
+    )
+    .replace(
+        /&/g,
+        "&"
+    )
+    .replace(
+        /"/g,
+       
+    )
+    .replace(
+        /'/g,
+        "'"
+    );
+
+}
+
+
+/* =====================================================
+   NORMALIZAR TEXTO
+===================================================== */
+
+function gpNormalizarTexto(texto){
+
+    return String(
+        texto || ""
+    )
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(
+        /[\u0300-\u036f]/g,
+        ""
+    )
+    .trim();
+
+}
+
+
+/* =====================================================
+   FECHA ACTUAL
+===================================================== */
+
+function gpFechaActual(){
+
+    var fecha =
+        new Date();
+
+    var año =
+        fecha.getFullYear();
+
+    var mes =
+        String(
+            fecha.getMonth()+1
+        ).padStart(
+            2,
+            "0"
+        );
+
+    var dia =
+        String(
+            fecha.getDate()
+        ).padStart(
+            2,
+            "0"
+        );
+
+    return (
+        año+
+        "-"+
+        mes+
+        "-"+
+        dia
+    );
+
+}
+
+
+/* =====================================================
+   NÚMERO
+===================================================== */
+
+function gpNumero(valor){
+
+    if(
+        valor === null ||
+        valor === undefined
+    ){
+
+        return 0;
+
+    }
+
+    var texto =
+        String(valor)
+        .replace(
+            /\$/g,
+            ""
+        )
+        .replace(
+            /,/g,
+            ""
+        )
+        .trim();
+
+    var numero =
+        parseFloat(
+            texto
+        );
+
+    if(
+        !isFinite(numero) ||
+        numero < 0
+    ){
+
+        return 0;
+
+    }
+
+    return numero;
+
+}
+
+
+/* =====================================================
+   FORMATO MONETARIO DE CAMPO
+===================================================== */
+
+function gpFormatoCampoMonetario(valor){
+
+    var numero =
+        gpNumero(valor);
+
+    return numero.toLocaleString(
+        "es-MX",
+        {
+            minimumFractionDigits:2,
+            maximumFractionDigits:2
+        }
+    );
+
+}
+
+
+/* =====================================================
+   LIMPIAR CAMPO MONETARIO
+===================================================== */
+
+function gpSanitizarCampoMonetario(campo){
+
+    if(!campo){
+        return;
+    }
+
+    var valor =
+        String(
+            campo.value || ""
+        )
+        .replace(
+            /[^0-9.]/g,
+            ""
+        );
+
+    var partes =
+        valor.split(".");
+
+    if(partes.length > 2){
+
+        valor =
+            partes[0]+
+            "."+
+            partes
+                .slice(1)
+                .join("");
+
+    }
+
+    campo.value =
+        valor;
+
+}
+
+
+/* =====================================================
+   CARGAR DATOS
+===================================================== */
+
+function gpCargarDatos(){
+
+    gpGastos =
+        gpLeerJSON(
+            GP_GASTOS_KEY,
+            []
+        );
+
+    gpProveedores =
+        gpLeerJSON(
+            GP_PROVEEDORES_KEY,
+            []
+        );
+
+
+    if(!Array.isArray(gpGastos)){
+        gpGastos=[];
+    }
+
+    if(!Array.isArray(gpProveedores)){
+        gpProveedores=[];
+    }
+
+}
+
+
+/* =====================================================
+   IDEA 3
+   DETECTAR INVENTARIO
+===================================================== */
+
+function gpCargarInventario(){
+
+    var encontrados = [];
+    var vistos = {};
+
+    try{
+
+        for(
+            var i=0;
+            i<localStorage.length;
+            i++
+        ){
+
+            var clave =
+                localStorage.key(i);
+
+            if(!clave){
+                continue;
+            }
+
+            if(
+                clave ===
+                GP_GASTOS_KEY ||
+                clave ===
+                GP_PROVEEDORES_KEY ||
+                clave ===
+                "pos_db_users"
+            ){
+
+                continue;
+
+            }
+
+            var contenido =
+                localStorage.getItem(
+                    clave
+                );
+
+            if(!contenido){
+                continue;
+            }
+
+            var datos;
+
+            try{
+
+                datos =
+                    JSON.parse(
+                        contenido
+                    );
+
+            }catch(e){
+
+                continue;
+
+            }
+
+            if(
+                !Array.isArray(datos)
+            ){
+
+                continue;
+
+            }
+
+            datos.forEach(
+                function(item){
+
+                    if(
+                        !item ||
+                        typeof item !==
+                        "object"
+                    ){
+
+                        return;
+
+                    }
+
+                    var nombre =
+                        item.nombre ||
+                        item.nombreProducto ||
+                        item.producto ||
+                        item.descripcion ||
+                        item.name ||
+                        "";
+
+                    var codigo =
+                        item.codigo ||
+                        item.codigoProducto ||
+                        item.code ||
+                        item.sku ||
+                        "";
+
+                    var categoria =
+                        item.categoria ||
+                        item.categoriaNombre ||
+                        item.category ||
+                        "";
+
+                    var tieneCaracteristicas =
+                        !!(
+                            codigo ||
+                            categoria ||
+                            item.precio ||
+                            item.precioVenta ||
+                            item.stock ||
+                            item.existencia ||
+                            item.existencias
+                        );
+
+                    if(
+                        !nombre ||
+                        !tieneCaracteristicas
+                    ){
+
+                        return;
+
+                    }
+
+                    var id =
+                        item.id != null
+                        ? String(item.id)
+                        : "";
+
+                    var claveUnica =
+                        id
+                        ? "id:"+id
+                        : (
+                            "art:"+
+                            gpNormalizarTexto(
+                                codigo
+                            )+
+                            "|"+
+                            gpNormalizarTexto(
+                                nombre
+                            )
+                        );
+
+                    if(
+                        vistos[
+                            claveUnica
+                        ]
+                    ){
+
+                        return;
+
+                    }
+
+                    vistos[
+                        claveUnica
+                    ] =
+                    true;
+
+                    encontrados.push({
+
+                        id:
+                            id ||
+                            codigo ||
+                            nombre,
+
+                        codigo:
+                            String(
+                                codigo || ""
+                            ),
+
+                        nombre:
+                            String(
+                                nombre || ""
+                            ),
+
+                        categoria:
+                            String(
+                                categoria || ""
+                            )
+
+                    });
+
+                }
+            );
+
+        }
+
+    }catch(error){
+
+        console.log(
+            "Error cargando inventario:",
+            error
+        );
+
+    }
+
+
+    gpInventario =
+        encontrados;
+
+}
+
+
+/* =====================================================
+   CATEGORÍAS DEL INVENTARIO
+===================================================== */
+
+function gpCargarCategoriasInventario(){
+
+    var select =
+        gpId(
+            "gpFiltroCategoriaArticulo"
+        );
+
+    if(!select){
+        return;
+    }
+
+    var categorias = {};
+
+    gpInventario.forEach(
+        function(articulo){
+
+            var categoria =
+                String(
+                    articulo.categoria ||
+                    ""
+                ).trim();
+
+            if(categoria){
+                categorias[
+                    categoria
+                ] =
+                true;
+            }
+
+        }
+    );
+
+    select.innerHTML =
+        '<option value="">Todas las categorías</option>';
+
+    Object.keys(
+        categorias
+    )
+    .sort(
+        function(a,b){
+            return a.localeCompare(
+                b,
+                "es"
+            );
+        }
+    )
+    .forEach(
+        function(categoria){
+
+            var opcion =
+                document.createElement(
+                    "option"
+                );
+
+            opcion.value =
+                categoria;
+
+            opcion.textContent =
+                categoria;
+
+            select.appendChild(
+                opcion
+            );
+
+        }
+    );
+
+}
+
+
+/* =====================================================
+   MOSTRAR RESULTADOS DE ARTÍCULOS
+===================================================== */
+
+function gpMostrarArticulos(){
+
+    var contenedor =
+        gpId(
+            "gpArticuloResultados"
+        );
+
+    var buscador =
+        gpId(
+            "gpBuscarArticulo"
+        );
+
+    var filtro =
+        gpId(
+            "gpFiltroCategoriaArticulo"
+        );
+
+    var mensaje =
+        gpId(
+            "gpArticuloNoExiste"
+        );
+
+    if(
+        !contenedor ||
+        !buscador
+    ){
+
+        return;
+
+    }
+
+    var texto =
+        gpNormalizarTexto(
+            buscador.value
+        );
+
+    var categoria =
+        filtro
+        ? filtro.value
+        : "";
+
+    var resultados =
+        gpInventario.filter(
+            function(articulo){
+
+                var nombre =
+                    gpNormalizarTexto(
+                        articulo.nombre
+                    );
+
+                var codigo =
+                    gpNormalizarTexto(
+                        articulo.codigo
+                    );
+
+                var categoriaArticulo =
+                    String(
+                        articulo.categoria ||
+                        ""
+                    );
+
+                var coincideTexto =
+                    !texto ||
+                    nombre.indexOf(
+                        texto
+                    ) !== -1 ||
+                    codigo.indexOf(
+                        texto
+                    ) !== -1;
+
+                var coincideCategoria =
+                    !categoria ||
+                    categoriaArticulo ===
+                    categoria;
+
+                return (
+                    coincideTexto &&
+                    coincideCategoria
+                );
+
+            }
+        );
+
+
+    if(
+        mensaje
+    ){
+
+        mensaje.classList.add(
+            "gp-articulo-oculto"
+        );
+
+    }
+
+
+    if(
+        !texto &&
+        !categoria
+    ){
+
+        contenedor.innerHTML =
+            '<div class="gp-articulo-help">'+
+            'Escribe el nombre o código del artículo para buscarlo.'+
+            '</div>';
+
+        return;
+
+    }
+
+
+    if(
+        resultados.length === 0
+    ){
+
+        contenedor.innerHTML =
+            "";
+
+        if(mensaje){
+
+            mensaje.classList.remove(
+                "gp-articulo-oculto"
+            );
+
+        }
+
+        return;
+
+    }
+
+
+    var html = "";
+
+
+    resultados
+        .slice(
+            0,
+            30
+        )
+        .forEach(
+            function(articulo){
+
+                html +=
+                    '<button '+
+                    'type="button" '+
+                    'class="gp-articulo-item" '+
+                    'data-gp-articulo-id="'+
+                    gpEscaparAttr(
+                        articulo.id
+                    )+
+                    '">';
+
+                html +=
+                    '<div class="gp-articulo-nombre">'+
+                    gpEscapar(
+                        articulo.nombre
+                    )+
+                    '</div>';
+
+                html +=
+                    '<div class="gp-articulo-meta">';
+
+                if(
+                    articulo.codigo
+                ){
+
+                    html +=
+                        'Código: '+
+                        gpEscapar(
+                            articulo.codigo
+                        );
+
+                }
+
+                if(
+                    articulo.categoria
+                ){
+
+                    html +=
+                        (
+                            articulo.codigo
+                            ? " · "
+                            : ""
+                        )+
+                        "Categoría: "+
+                        gpEscapar(
+                            articulo.categoria
+                        );
+
+                }
+
+                html +=
+                    '</div>';
+
+                html +=
+                    '</button>';
+
+            }
+        );
+
+
+    contenedor.innerHTML =
+        html;
+
+}
+
+
+/* =====================================================
+   SELECCIONAR ARTÍCULO
+===================================================== */
+
+function gpSeleccionarArticulo(id){
+
+    var articulo =
+        gpInventario.find(
+            function(item){
+
+                return String(
+                    item.id
+                ) ===
+                String(id);
+
+            }
+        );
+
+    if(!articulo){
+        return;
+    }
+
+
+    gpId(
+        "gpArticuloId"
+    ).value =
+        articulo.id || "";
+
+    gpId(
+        "gpArticuloCodigo"
+    ).value =
+        articulo.codigo || "";
+
+    gpId(
+        "gpArticuloNombre"
+    ).value =
+        articulo.nombre || "";
+
+    gpId(
+        "gpArticuloCategoria"
+    ).value =
+        articulo.categoria || "";
+
+
+    gpId(
+        "gpArticuloSeleccionadoNombre"
+    ).textContent =
+        articulo.nombre || "";
+
+
+    gpId(
+        "gpArticuloSeleccionadoMeta"
+    ).textContent =
+        (
+            articulo.codigo
+            ? "Código: "+
+                articulo.codigo
+            : ""
+        )+
+        (
+            articulo.categoria
+            ? (
+                articulo.codigo
+                ? " · "
+                : ""
+            )+
+            "Categoría: "+
+            articulo.categoria
+            : ""
+        );
+
+
+    gpId(
+        "gpArticuloSeleccionado"
+    )
+    .classList.remove(
+        "gp-articulo-oculto"
+    );
+
+
+    gpId(
+        "gpArticuloNoExiste"
+    )
+    .classList.add(
+        "gp-articulo-oculto"
+    );
+
+
+    gpId(
+        "gpArticuloResultados"
+    ).innerHTML =
+        "";
+
+
+    gpId(
+        "gpBuscarArticulo"
+    ).value =
+        articulo.nombre || "";
+
+
+    gpId(
+        "gpConcepto"
+    ).value =
+        articulo.nombre || "";
+
+
+    gpMostrarMensaje(
+        "Artículo seleccionado correctamente."
+    );
+
+}
+
+
+/* =====================================================
+   NUEVO
+   ID ÚNICO DE FILA
+===================================================== */
+
+function gpGenerarFilaId(){
+
+    return (
+        "fila_"+
+        Date.now().toString(36)+
+        "_"+
+        Math.random()
+            .toString(36)
+            .substring(2,8)
+    );
+
+}
+
+
+/* =====================================================
+   NUEVO
+   ACTUALIZAR CONCEPTO A PARTIR DE LA LISTA
+===================================================== */
+
+function gpActualizarConceptoDesdeLista(){
+
+    var tipoGasto =
+        gpId(
+            "gpTipoGasto"
+        ).value;
+
+    if(
+        tipoGasto !==
+        "articulo"
+    ){
+
+        return;
+
+    }
+
+    var concepto =
+        gpId(
+            "gpConcepto"
+        );
+
+    if(!concepto){
+        return;
+    }
+
+    if(
+        gpArticulosActuales.length === 0
+    ){
+
+        concepto.value =
+            "";
+
+        return;
+
+    }
+
+    concepto.value =
+        gpArticulosActuales
+            .map(
+                function(item){
+                    return item.nombre;
+                }
+            )
+            .join(", ");
+
+}
+
+
+/* =====================================================
+   NUEVO
+   RENDERIZAR LISTA DE ARTÍCULOS
+===================================================== */
+
+function gpRenderArticulosLista(){
+
+    var contenedor =
+        gpId(
+            "gpArticulosLista"
+        );
+
+    var contador =
+        gpId(
+            "gpArticulosContador"
+        );
+
+    var boton =
+        gpId(
+            "gpBtnAgregarArticulo"
+        );
+
+    if(!contenedor){
+        return;
+    }
+
+    if(contador){
+
+        contador.textContent =
+            gpArticulosActuales.length+
+            " / "+
+            GP_MAX_ARTICULOS+
+            " artículos agregados";
+
+    }
+
+    if(boton){
+
+        boton.disabled =
+            gpArticulosActuales.length >=
+            GP_MAX_ARTICULOS;
+
+    }
+
+    if(
+        gpArticulosActuales.length === 0
+    ){
+
+        contenedor.innerHTML =
+            '<div class="gp-articulo-help">'+
+            'Aún no has agregado artículos a la lista.'+
+            '</div>';
+
+        return;
+
+    }
+
+    var html = "";
+
+    gpArticulosActuales.forEach(
+        function(item){
+
+            html +=
+                '<div class="gp-item-fila" data-gp-item-fila="'+
+                gpEscaparAttr(item.filaId)+
+                '">';
+
+            html +=
+                '<div class="gp-item-fila-top">';
+
+            html +=
+                '<div class="gp-item-fila-nombre">'+
+                gpEscapar(item.nombre)+
+                '</div>';
+
+            html +=
+                '<button type="button" class="gp-item-fila-eliminar" data-gp-item-eliminar="'+
+                gpEscaparAttr(item.filaId)+
+                '">✕</button>';
+
+            html +=
+                '</div>';
+
+            var meta = "";
+
+            if(item.codigo){
+
+                meta +=
+                    "Código: "+
+                    gpEscapar(item.codigo);
+
+            }
+
+            if(item.categoria){
+
+                meta +=
+                    (
+                        item.codigo
+                        ? " · "
+                        : ""
+                    )+
+                    "Categoría: "+
+                    gpEscapar(item.categoria);
+
+            }
+
+            if(meta){
+
+                html +=
+                    '<div class="gp-item-fila-meta">'+
+                    meta+
+                    '</div>';
+
+            }
+
+            html +=
+                '</div>';
+
+        }
+    );
+
+    contenedor.innerHTML =
+        html;
+
+}
+
+
+/* =====================================================
+   NUEVO
+   AGREGAR ARTÍCULO A LA LISTA
+===================================================== */
+
+function gpAgregarArticuloALista(){
+
+    var articuloId =
+        gpId(
+            "gpArticuloId"
+        ).value;
+
+    if(!articuloId){
+
+        gpMostrarMensaje(
+            "Selecciona un artículo del inventario antes de agregarlo."
+        );
+
+        return;
+
+    }
+
+    if(
+        gpArticulosActuales.length >=
+        GP_MAX_ARTICULOS
+    ){
+
+        gpMostrarMensaje(
+            "Has alcanzado el máximo de 50 artículos por gasto."
+        );
+
+        return;
+
+    }
+
+    var articulo =
+        gpInventario.find(
+            function(item){
+
+                return String(
+                    item.id
+                ) ===
+                String(articuloId);
+
+            }
+        );
+
+    var nombre =
+        gpId("gpArticuloNombre").value ||
+        (articulo ? articulo.nombre : "") ||
+        "";
+
+    var codigo =
+        gpId("gpArticuloCodigo").value ||
+        (articulo ? articulo.codigo : "") ||
+        "";
+
+    var categoria =
+        gpId("gpArticuloCategoria").value ||
+        (articulo ? articulo.categoria : "") ||
+        "";
+
+    gpArticulosActuales.push({
+
+        filaId:
+            gpGenerarFilaId(),
+
+        id:
+            articuloId,
+
+        codigo:
+            codigo,
+
+        nombre:
+            nombre,
+
+        categoria:
+            categoria
+
+    });
+
+
+    gpId("gpArticuloId").value = "";
+    gpId("gpArticuloCodigo").value = "";
+    gpId("gpArticuloNombre").value = "";
+    gpId("gpArticuloCategoria").value = "";
+
+    gpId("gpArticuloSeleccionado")
+        .classList.add("gp-articulo-oculto");
+
+    gpId("gpArticuloNoExiste")
+        .classList.add("gp-articulo-oculto");
+
+    gpId("gpBuscarArticulo").value = "";
+
+    gpId("gpArticuloResultados").innerHTML = "";
+
+
+    gpActualizarConceptoDesdeLista();
+
+    gpRenderArticulosLista();
+
+    gpMostrarMensaje(
+        "Artículo agregado a la lista."
+    );
+
+}
+
+
+/* =====================================================
+   NUEVO
+   ELIMINAR ARTÍCULO DE LA LISTA
+===================================================== */
+
+function gpEliminarArticuloDeLista(filaId){
+
+    gpArticulosActuales =
+        gpArticulosActuales.filter(
+            function(item){
+
+                return item.filaId !==
+                    filaId;
+
+            }
+        );
+
+    gpActualizarConceptoDesdeLista();
+
+    gpRenderArticulosLista();
+
+}
+
+
+/* =====================================================
+   ESTADO DEL PROVEEDOR
+===================================================== */
+
+function gpProveedorActivo(proveedor){
+
+    if(!proveedor){
+        return false;
+    }
+
+    return (
+        proveedor.estadoProveedor ===
+        "Activo"
+    );
+
+}
+
+
+/* =====================================================
+   CARGAR PROVEEDORES
+===================================================== */
+
+function gpCargarProveedores(){
+
+    gpProveedores =
+        gpLeerJSON(
+            GP_PROVEEDORES_KEY,
+            []
+        );
+
+    if(!Array.isArray(gpProveedores)){
+        gpProveedores=[];
+    }
+
+    var select =
+        gpId(
+            "gpProveedor"
+        );
+
+    var filtro =
+        gpId(
+            "gpFiltroProveedor"
+        );
+
+
+    if(select){
+
+        select.innerHTML =
+            '<option value="">'+
+            'Selecciona un proveedor'+
+            '</option>';
+
+    }
+
+
+    if(filtro){
+
+        filtro.innerHTML =
+            '<option value="">'+
+            'Todos los proveedores'+
+            '</option>';
+
+    }
+
+
+    gpProveedores.forEach(
+        function(proveedor){
+
+            if(!proveedor){
+                return;
+            }
+
+            var id =
+                proveedor.id != null
+                ? proveedor.id
+                : "";
+
+            var nombre =
+                proveedor.nombre ||
+                "Proveedor sin nombre";
+
+            var activo =
+                gpProveedorActivo(
+                    proveedor
+                );
+
+
+            if(
+                select &&
+                activo
+            ){
+
+                var opcionNuevo =
+                    document.createElement(
+                        "option"
+                    );
+
+                opcionNuevo.value =
+                    id;
+
+                opcionNuevo.textContent =
+                    nombre;
+
+                select.appendChild(
+                    opcionNuevo
+                );
+
+            }
+
+
+            if(filtro){
+
+                var opcionFiltro =
+                    document.createElement(
+                        "option"
+                    );
+
+                opcionFiltro.value =
+                    id;
+
+                opcionFiltro.textContent =
+                    activo
+                    ? nombre
+                    : nombre+" (Inactivo)";
+
+                filtro.appendChild(
+                    opcionFiltro
+                );
+
+            }
+
+        }
+    );
+
+}
+
+
+/* =====================================================
+   NUEVO GASTO
+===================================================== */
+
+function gpAbrirNuevo(){
+
+    var formulario =
+        gpId(
+            "gpForm"
+        );
+
+    if(formulario){
+        formulario.reset();
+    }
+
+
+    gpId(
+        "gpId"
+    ).value =
+    "";
+
+
+    gpId(
+        "gpArticuloId"
+    ).value =
+    "";
+
+    gpId(
+        "gpArticuloCodigo"
+    ).value =
+    "";
+
+    gpId(
+        "gpArticuloNombre"
+    ).value =
+    "";
+
+    gpId(
+        "gpArticuloCategoria"
+    ).value =
+    "";
+
+
+    gpArticulosActuales =
+        [];
+
+    gpRenderArticulosLista();
+
+
+    gpId(
+        "gpModalTitulo"
+    ).textContent =
+    "Nuevo gasto";
+
+
+    gpId(
+        "gpFechaCompra"
+    ).value =
+    gpFechaActual();
+
+
+    gpId(
+        "gpIvaPorcentaje"
+    ).value =
+    "16";
+
+
+    gpId(
+        "gpDescuento"
+    ).value =
+    "0";
+
+
+    gpId(
+        "gpTotal"
+    ).value =
+    "";
+
+
+    gpId(
+        "gpPagado"
+    ).value =
+    "0";
+
+
+    gpId(
+        "gpSaldo"
+    ).value =
+    "0.00";
+
+
+    gpId(
+        "gpTipoGasto"
+    ).value =
+    "articulo";
+
+
+    gpId(
+        "gpArticuloSeleccionado"
+    )
+    .classList.add(
+        "gp-articulo-oculto"
+    );
+
+
+    gpId(
+        "gpArticuloNoExiste"
+    )
+    .classList.add(
+        "gp-articulo-oculto"
+    );
+
+
+    gpId(
+        "gpBuscarArticulo"
+    ).value =
+    "";
+
+
+    gpId(
+        "gpArticuloResultados"
+    ).innerHTML =
+    "";
+
+
+    gpCargarProveedores();
+
+    gpCargarInventario();
+
+    gpCargarCategoriasInventario();
+
+    gpActualizarTipoGasto();
+
+
+    gpId(
+        "gpModal"
+    )
+    .classList.add(
+        "gp-visible"
+    );
+
+}
+
+
+/* =====================================================
+   CERRAR MODAL
+===================================================== */
+
+function gpCerrarModal(){
+
+    gpId(
+        "gpModal"
+    )
+    .classList.remove(
+        "gp-visible"
+    );
+
+}
+
+
+/* =====================================================
+   IDEA 4
+   CALCULAR TOTAL INVERSAMENTE
+===================================================== */
+
+function gpCalcular(){
+
+    var total =
+        gpNumero(
+            gpId(
+                "gpTotal"
+            ).value
+        );
+
+
+    var porcentaje =
+        gpNumero(
+            gpId(
+                "gpIvaPorcentaje"
+            ).value
+        );
+
+
+    var descuento =
+        gpNumero(
+            gpId(
+                "gpDescuento"
+            ).value
+        );
+
+
+    var pagado =
+        gpNumero(
+            gpId(
+                "gpPagado"
+            ).value
+        );
+
+
+    if(total < 0){
+        total = 0;
+    }
+
+
+    if(descuento < 0){
+        descuento = 0;
+    }
+
+
+    if(pagado < 0){
+        pagado = 0;
+    }
+
+
+    /*
+       TOTAL =
+       SUBTOTAL + IVA - DESCUENTO
+
+       Por lo tanto:
+
+       SUBTOTAL =
+       (TOTAL + DESCUENTO)
+       /
+       (1 + IVA)
+    */
+
+    var divisor =
+        1 +
+        (
+            porcentaje /
+            100
+        );
+
+
+    var subtotal = 0;
+
+
+    if(
+        divisor > 0
+    ){
+
+        subtotal =
+            (
+                total +
+                descuento
+            ) /
+            divisor;
+
+    }
+
+
+    var iva =
+        subtotal *
+        (
+            porcentaje /
+            100
+        );
+
+
+    var saldo =
+        total -
+        pagado;
+
+
+    if(
+        pagado >
+        total
+    ){
+
+        pagado =
+            total;
+
+        saldo =
+            0;
+
+        gpId(
+            "gpPagado"
+        ).value =
+            gpFormatoCampoMonetario(
+                pagado
+            );
+
+    }
+
+
+    if(saldo < 0){
+        saldo = 0;
+    }
+
+
+    gpId(
+        "gpSubtotal"
+    ).value =
+        gpFormatoCampoMonetario(
+            subtotal
+        );
+
+
+    gpId(
+        "gpIva"
+    ).value =
+        gpFormatoCampoMonetario(
+            iva
+        );
+
+
+    gpId(
+        "gpSaldo"
+    ).value =
+        gpFormatoCampoMonetario(
+            saldo
+        );
+
+}
+
+
+/* =====================================================
+   GUARDAR
+===================================================== */
+
+function gpGuardar(evento){
+
+    if(evento){
+        evento.preventDefault();
+    }
+
+
+    gpCalcular();
+
+
+    var tipoGasto =
+        gpId(
+            "gpTipoGasto"
+        ).value;
+
+
+    var proveedorId =
+        gpId(
+            "gpProveedor"
+        ).value;
+
+
+    if(!proveedorId){
+
+        gpMostrarMensaje(
+            "Selecciona un proveedor."
+        );
+
+        return false;
+
+    }
+
+
+    var proveedor =
+        gpProveedores.find(
+            function(p){
+
+                return String(
+                    p.id
+                ) ===
+                String(
+                    proveedorId
+                );
+
+            }
+        );
+
+
+    if(!proveedor){
+
+        gpMostrarMensaje(
+            "No se encontró el proveedor."
+        );
+
+        return false;
+
+    }
+
+
+    var idActual =
+        gpId(
+            "gpId"
+        ).value;
+
+
+    if(
+        !gpProveedorActivo(
+            proveedor
+        )
+    ){
+
+        var gastoOriginal =
+            gpGastos.find(
+                function(g){
+
+                    return String(
+                        g.id
+                    ) ===
+                    String(
+                        idActual
+                    );
+
+                }
+            );
+
+
+        var conservarProveedorHistorico =
+            gastoOriginal &&
+            String(
+                gastoOriginal.proveedorId
+            ) ===
+            String(
+                proveedor.id
+            );
+
+
+        if(
+            !conservarProveedorHistorico
+        ){
+
+            gpMostrarMensaje(
+                "Este proveedor está inactivo y no puede recibir nuevos gastos."
+            );
+
+            gpCargarProveedores();
+
+            return false;
+
+        }
+
+    }
+
+
+    var articulosGuardar =
+        [];
+
+    if(
+        tipoGasto ===
+        "articulo"
+    ){
+
+        articulosGuardar =
+            gpArticulosActuales.map(
+                function(item){
+
+                    return {
+
+                        id:
+                            item.id,
+
+                        codigo:
+                            item.codigo,
+
+                        nombre:
+                            item.nombre,
+
+                        categoria:
+                            item.categoria
+
+                    };
+
+                }
+            );
+
+    }
+
+
+    if(
+        tipoGasto ===
+        "articulo" &&
+        articulosGuardar.length === 0
+    ){
+
+        gpMostrarMensaje(
+            "Agrega al menos un artículo de inventario a la lista."
+        );
+
+        return false;
+
+    }
+
+
+    var primerArticulo =
+        articulosGuardar.length > 0
+        ? articulosGuardar[0]
+        : null;
+
+
+    var articuloId =
+        primerArticulo
+        ? primerArticulo.id
+        : "";
+
+
+    var articuloCodigo =
+        primerArticulo
+        ? primerArticulo.codigo
+        : "";
+
+
+    var articuloCategoria =
+        primerArticulo
+        ? primerArticulo.categoria
+        : "";
+
+
+    var articuloNombre = "";
+
+    if(primerArticulo){
+
+        articuloNombre =
+            articulosGuardar.length > 1
+            ? (
+                primerArticulo.nombre+
+                " y "+
+                (articulosGuardar.length - 1)+
+                " artículo(s) más"
+            )
+            : primerArticulo.nombre;
+
+    }
+
+
+    if(
+        tipoGasto ===
+        "otro"
+    ){
+
+        articuloId = "";
+        articuloCodigo = "";
+        articuloNombre = "";
+        articuloCategoria = "";
+        articulosGuardar = [];
+
+    }
+
+
+    var concepto =
+        gpId(
+            "gpConcepto"
+        ).value
+        .trim();
+
+
+    if(!concepto){
+
+        gpMostrarMensaje(
+            "Ingresa el concepto o descripción."
+        );
+
+        return false;
+
+    }
+
+
+    var subtotal =
+        gpNumero(
+            gpId(
+                "gpSubtotal"
+            ).value
+        );
+
+
+    var porcentajeIVA =
+        gpNumero(
+            gpId(
+                "gpIvaPorcentaje"
+            ).value
+        );
+
+
+    var montoIVA =
+        gpNumero(
+            gpId(
+                "gpIva"
+            ).value
+        );
+
+
+    var descuento =
+        gpNumero(
+            gpId(
+                "gpDescuento"
+            ).value
+        );
+
+
+    var total =
+        gpNumero(
+            gpId(
+                "gpTotal"
+            ).value
+        );
+
+
+    var pagado =
+        gpNumero(
+            gpId(
+                "gpPagado"
+            ).value
+        );
+
+
+    var saldo =
+        gpNumero(
+            gpId(
+                "gpSaldo"
+            ).value
+        );
+
+
+    if(
+        total <= 0
+    ){
+
+        gpMostrarMensaje(
+            "Ingresa el total de la cuenta o factura."
+        );
+
+        return false;
+
+    }
+
+
+    var estado =
+        "Pendiente";
+
+
+    if(
+        saldo <= 0
+    ){
+
+        estado =
+            "Pagado";
+
+    }else if(
+        pagado > 0
+    ){
+
+        estado =
+            "Abonado";
+
+    }
+
+
+    var gasto = {
+
+        id:
+            idActual ||
+            (
+                Date.now()
+                .toString()+
+                Math.random()
+                    .toString(36)
+                    .substring(
+                        2,
+                        8
+                    )
+            ),
+
+        folio:
+            gpId(
+                "gpFolio"
+            )
+            .value
+            .trim(),
+
+        fechaCompra:
+            gpId(
+                "gpFechaCompra"
+            )
+            .value,
+
+        proveedorId:
+            proveedor.id,
+
+        proveedorNombre:
+            proveedor.nombre ||
+            "",
+
+        proveedorCodigo:
+            proveedor.codigo ||
+            "",
+
+        tipoGasto:
+            tipoGasto,
+
+        articuloId:
+            articuloId,
+
+        articuloCodigo:
+            articuloCodigo,
+
+        articuloNombre:
+            articuloNombre,
+
+        articuloCategoria:
+            articuloCategoria,
+
+        articulos:
+            articulosGuardar,
+
+        concepto:
+            concepto,
+
+        subtotal:
+            subtotal,
+
+        porcentajeIVA:
+            porcentajeIVA,
+
+        montoIVA:
+            montoIVA,
+
+        descuento:
+            descuento,
+
+        total:
+            total,
+
+        formaPago:
+            gpId(
+                "gpFormaPago"
+            )
+            .value,
+
+        condicionPago:
+            gpId(
+                "gpCondicion"
+            )
+            .value,
+
+        fechaVencimiento:
+            gpId(
+                "gpVencimiento"
+            )
+            .value,
+
+        montoPagado:
+            pagado,
+
+        saldoPendiente:
+            saldo,
+
+        estado:
+            estado,
+
+        notas:
+            gpId(
+                "gpNotas"
+            )
+            .value
+            .trim(),
+
+        fechaRegistro:
+            new Date()
+                .toISOString()
+
+    };
+
+
+    if(idActual){
+
+        var indice =
+            gpGastos.findIndex(
+                function(g){
+
+                    return String(
+                        g.id
+                    ) ===
+                    String(
+                        idActual
+                    );
+
+                }
+            );
+
+
+        if(indice >= 0){
+
+            gpGastos[
+                indice
+            ] =
+            gasto;
+
+        }else{
+
+            gpGastos.unshift(
+                gasto
+            );
+
+        }
+
+    }else{
+
+        gpGastos.unshift(
+            gasto
+        );
+
+    }
+
+
+    if(
+        gpGuardarJSON(
+            GP_GASTOS_KEY,
+            gpGastos
+        )
+    ){
+
+        gpMostrarLista();
+
+        gpCerrarModal();
+
+        gpMostrarMensaje(
+            idActual
+            ? "Gasto actualizado correctamente."
+            : "Gasto registrado correctamente."
+        );
+
+    }
+
+
+    return false;
+
+}
+
+
+/* =====================================================
+   EDITAR GASTO
+===================================================== */
+
+function gpEditar(id){
+
+    var gasto =
+        gpGastos.find(
+            function(g){
+
+                return String(
+                    g.id
+                ) ===
+                String(
+                    id
+                );
+
+            }
+        );
+
+
+    if(!gasto){
+        return;
+    }
+
+
+    gpCargarProveedores();
+
+    gpCargarInventario();
+
+    gpCargarCategoriasInventario();
+
+
+    gpId(
+        "gpId"
+    ).value =
+        gasto.id || "";
+
+
+    gpId(
+        "gpFolio"
+    ).value =
+        gasto.folio || "";
+
+
+    gpId(
+        "gpFechaCompra"
+    ).value =
+        gasto.fechaCompra || "";
+
+
+    gpId(
+        "gpTipoGasto"
+    ).value =
+        gasto.tipoGasto ||
+        (
+            gasto.articuloId
+            ? "articulo"
+            : "otro"
+        );
+
+
+    gpId(
+        "gpArticuloId"
+    ).value =
+        gasto.articuloId || "";
+
+
+    gpId(
+        "gpArticuloCodigo"
+    ).value =
+        gasto.articuloCodigo || "";
+
+
+    gpId(
+        "gpArticuloNombre"
+    ).value =
+        gasto.articuloNombre || "";
+
+
+    gpId(
+        "gpArticuloCategoria"
+    ).value =
+        gasto.articuloCategoria || "";
+
+
+    gpId(
+        "gpConcepto"
+    ).value =
+        gasto.concepto || "";
+
+
+    gpId(
+        "gpTotal"
+    ).value =
+        gpFormatoCampoMonetario(
+            gasto.total || 0
+        );
+
+
+    gpId(
+        "gpIvaPorcentaje"
+    ).value =
+        gasto.porcentajeIVA != null
+        ? gasto.porcentajeIVA
+        : 16;
+
+
+    gpId(
+        "gpDescuento"
+    ).value =
+        gpFormatoCampoMonetario(
+            gasto.descuento || 0
+        );
+
+
+    gpId(
+        "gpFormaPago"
+    ).value =
+        gasto.formaPago ||
+        "Efectivo";
+
+
+    gpId(
+        "gpCondicion"
+    ).value =
+        gasto.condicionPago ||
+        "Contado";
+
+
+    gpId(
+        "gpVencimiento"
+    ).value =
+        gasto.fechaVencimiento ||
+        "";
+
+
+    gpId(
+        "gpPagado"
+    ).value =
+        gpFormatoCampoMonetario(
+            gasto.montoPagado || 0
+        );
+
+
+    gpId(
+        "gpNotas"
+    ).value =
+        gasto.notas || "";
+
+
+    var proveedorActual =
+        gpProveedores.find(
+            function(p){
+
+                return String(
+                    p.id
+                ) ===
+                String(
+                    gasto.proveedorId
+                );
+
+            }
+        );
+
+
+    if(
+        proveedorActual &&
+        !gpProveedorActivo(
+            proveedorActual
+        )
+    ){
+
+        var opcionHistorica =
+            document.createElement(
+                "option"
+            );
+
+        opcionHistorica.value =
+            proveedorActual.id;
+
+        opcionHistorica.textContent =
+            proveedorActual.nombre+
+            " (Inactivo - histórico)";
+
+        gpId(
+            "gpProveedor"
+        )
+        .appendChild(
+            opcionHistorica
+        );
+
+    }
+
+
+    gpId(
+        "gpProveedor"
+    ).value =
+    gasto.proveedorId || "";
+
+
+    gpActualizarTipoGasto();
+
+
+    gpArticulosActuales =
+        [];
+
+    if(
+        Array.isArray(gasto.articulos) &&
+        gasto.articulos.length > 0
+    ){
+
+        /* NUEVO: registros ya guardados con lista de artículos */
+
+        gpArticulosActuales =
+            gasto.articulos.map(
+                function(item){
+
+                    return {
+
+                        filaId:
+                            gpGenerarFilaId(),
+
+                        id:
+                            item.id || "",
+
+                        codigo:
+                            item.codigo || "",
+
+                        nombre:
+                            item.nombre || "",
+
+                        categoria:
+                            item.categoria || ""
+
+                    };
+
+                }
+            );
+
+    }else if(
+        gasto.articuloId
+    ){
+
+        /* COMPATIBILIDAD: registros antiguos de un solo artículo */
+
+        gpArticulosActuales =
+            [{
+
+                filaId:
+                    gpGenerarFilaId(),
+
+                id:
+                    gasto.articuloId,
+
+                codigo:
+                    gasto.articuloCodigo || "",
+
+                nombre:
+                    gasto.articuloNombre || "",
+
+                categoria:
+                    gasto.articuloCategoria || ""
+
+            }];
+
+    }
+
+
+    gpId("gpArticuloId").value = "";
+    gpId("gpArticuloCodigo").value = "";
+    gpId("gpArticuloNombre").value = "";
+    gpId("gpArticuloCategoria").value = "";
+
+    gpId("gpArticuloSeleccionado")
+        .classList.add("gp-articulo-oculto");
+
+    gpId("gpArticuloNoExiste")
+        .classList.add("gp-articulo-oculto");
+
+    gpId("gpBuscarArticulo").value = "";
+
+    gpId("gpArticuloResultados").innerHTML = "";
+
+    gpRenderArticulosLista();
+
+
+    gpCalcular();
+
+
+    gpId(
+        "gpModalTitulo"
+    ).textContent =
+    "Editar gasto";
+
+
+    gpId(
+        "gpModal"
+    )
+    .classList.add(
+        "gp-visible"
+    );
+
+}
+
+
+/* =====================================================
+   ELIMINAR
+===================================================== */
+
+function gpEliminar(id){
+
+    if(
+        !window.confirm(
+            "¿Deseas eliminar este gasto?"
+        )
+    ){
+
+        return;
+
+    }
+
+
+    gpGastos =
+        gpGastos.filter(
+            function(g){
+
+                return String(
+                    g.id
+                ) !==
+                String(
+                    id
+                );
+
+            }
+        );
+
+
+    if(
+        gpGuardarJSON(
+            GP_GASTOS_KEY,
+            gpGastos
+        )
+    ){
+
+        gpMostrarLista();
+
+        gpMostrarMensaje(
+            "Gasto eliminado."
+        );
+
+    }
+
+}
+
+
+/* =====================================================
+   MOSTRAR LISTA
+===================================================== */
+
+function gpMostrarLista(){
+
+    var contenedor =
+        gpId(
+            "gpLista"
+        );
+
+
+    if(!contenedor){
+        return;
+    }
+
+
+    var elementoBuscar =
+        gpId(
+            "gpBuscar"
+        );
+
+
+    var elementoProveedor =
+        gpId(
+            "gpFiltroProveedor"
+        );
+
+
+    var elementoEstado =
+        gpId(
+            "gpFiltroEstado"
+        );
+
+
+    var texto =
+        gpNormalizarTexto(
+            elementoBuscar
+            ? elementoBuscar.value
+            : ""
+        );
+
+
+    var filtroProveedor =
+        elementoProveedor
+        ? elementoProveedor.value
+        : "";
+
+
+    var filtroEstado =
+        elementoEstado
+        ? elementoEstado.value
+        : "";
+
+
+    var resultados =
+        gpGastos.filter(
+            function(gasto){
+
+                var proveedorTexto =
+                    gpNormalizarTexto(
+                        gasto.proveedorNombre
+                    );
+
+
+                var folioTexto =
+                    gpNormalizarTexto(
+                        gasto.folio
+                    );
+
+
+                var conceptoTexto =
+                    gpNormalizarTexto(
+                        gasto.concepto
+                    );
+
+
+                var articuloTexto =
+                    gpNormalizarTexto(
+                        gasto.articuloNombre
+                    );
+
+
+                var articuloCodigoTexto =
+                    gpNormalizarTexto(
+                        gasto.articuloCodigo
+                    );
+
+
+                var coincideTexto =
+                    !texto ||
+                    proveedorTexto.indexOf(
+                        texto
+                    ) !== -1 ||
+                    folioTexto.indexOf(
+                        texto
+                    ) !== -1 ||
+                    conceptoTexto.indexOf(
+                        texto
+                    ) !== -1 ||
+                    articuloTexto.indexOf(
+                        texto
+                    ) !== -1 ||
+                    articuloCodigoTexto.indexOf(
+                        texto
+                    ) !== -1;
+
+
+                var coincideProveedor =
+                    !filtroProveedor ||
+                    String(
+                        gasto.proveedorId
+                    ) ===
+                    String(
+                        filtroProveedor
+                    );
+
+
+                var coincideEstado =
+                    !filtroEstado ||
+                    gasto.estado ===
+                    filtroEstado;
+
+
+                return (
+                    coincideTexto &&
+                    coincideProveedor &&
+                    coincideEstado
+                );
+
+            }
+        );
+
+
+    gpActualizarResumen();
+
+
+    if(
+        resultados.length === 0
+    ){
+
+        var hayFiltros =
+            texto ||
+            filtroProveedor ||
+            filtroEstado;
+
+
+        contenedor.innerHTML =
+            '<div class="gp-empty">'+
+            '<div class="gp-empty-icon">'+
+            (
+                hayFiltros
+                ? "🔎"
+                : "💰"
+            )+
+            '</div>'+
+            '<div>'+
+            (
+                hayFiltros
+                ? "No se encontraron gastos con esos criterios."
+                : "No hay gastos registrados."
+            )+
+            '</div>'+
+            '</div>';
+
+        return;
+
+    }
+
+
+    var html = "";
+
+
+    resultados.forEach(
+        function(gasto){
+
+            html +=
+                gpCrearTarjeta(
+                    gasto
+                );
+
+        }
+    );
+
+
+    contenedor.innerHTML =
+        html;
+
+}
+
+
+/* =====================================================
+   TARJETA
+===================================================== */
+
+function gpCrearTarjeta(gasto){
+
+    var claseEstado =
+        "gp-status-pending";
+
+
+    if(
+        gasto.estado ===
+        "Pagado"
+    ){
+
+        claseEstado =
+            "gp-status-paid";
+
+    }else if(
+        gasto.estado ===
+        "Abonado"
+    ){
+
+        claseEstado =
+            "gp-status-partial";
+
+    }
+
+
+    var vencimiento = "";
+
+
+    if(
+        gasto.fechaVencimiento
+    ){
+
+        vencimiento =
+            '<div class="gp-info-row">'+
+
+            '<span class="gp-info-label">'+
+            'Vencimiento:'+
+            '</span>'+
+
+            '<span class="gp-info-value">'+
+
+            gpFechaMostrar(
+                gasto.fechaVencimiento
+            )+
+
+            '</span>'+
+
+            '</div>';
+
+    }
+
+
+    var articulo = "";
+
+
+    if(
+        gasto.articuloNombre
+    ){
+
+        articulo =
+            gpFila(
+                "Artículo",
+                gpEscapar(
+                    gasto.articuloNombre
+                )
+            );
+
+    }
+
+
+    return (
+
+        '<div class="gp-card">'+
+
+        '<div class="gp-card-top">'+
+
+        '<div>'+
+
+        '<div class="gp-provider">'+
+
+        gpEscapar(
+            gasto.proveedorNombre ||
+            "Proveedor"
+        )+
+
+        '</div>'+
+
+        '<div class="gp-folio">'+
+
+        (
+            gasto.folio
+            ? "Folio: "+
+                gpEscapar(
+                    gasto.folio
+                )
+            : "Sin folio"
+        )+
+
+        '</div>'+
+
+        '</div>'+
+
+        '<div class="gp-status '+
+        claseEstado+
+        '">'+
+
+        gpEscapar(
+            gasto.estado
+        )+
+
+        '</div>'+
+
+        '</div>'+
+
+        '<div class="gp-info">'+
+
+        gpFila(
+            "Fecha",
+            gpFechaMostrar(
+                gasto.fechaCompra
+            )
+        )+
+
+        articulo+
+
+        gpFila(
+            "Concepto",
+            gpEscapar(
+                gasto.concepto
+            )
+        )+
+
+        gpFila(
+            "Total",
+            gpMoneda(
+                gasto.total
+            ),
+            "gp-total"
+        )+
+
+        gpFila(
+            "Pagado",
+            gpMoneda(
+                gasto.montoPagado
+            )
+        )+
+
+        gpFila(
+            "Saldo",
+            gpMoneda(
+                gasto.saldoPendiente
+            ),
+            "gp-balance"
+        )+
+
+        gpFila(
+            "Forma de pago",
+            gpEscapar(
+                gasto.formaPago
+            )
+        )+
+
+        vencimiento+
+
+        '</div>'+
+
+        '<div class="gp-actions">'+
+
+        '<button '+
+        'type="button" '+
+        'class="gp-action gp-edit" '+
+        'data-gp-edit="'+
+        gpEscaparAttr(
+            gasto.id
+        )+
+        '">'+
+
+        'Editar'+
+
+        '</button>'+
+
+        '<button '+
+        'type="button" '+
+        'class="gp-action gp-delete" '+
+        'data-gp-delete="'+
+        gpEscaparAttr(
+            gasto.id
+        )+
+        '">'+
+
+        'Eliminar'+
+
+        '</button>'+
+
+        '</div>'+
+
+        '</div>'
+
+    );
+
+}
+
+
+/* =====================================================
+   FILA
+===================================================== */
+
+function gpFila(
+    etiqueta,
+    valor,
+    clase
+){
+
+    return (
+
+        '<div class="gp-info-row">'+
+
+        '<span class="gp-info-label">'+
+        etiqueta+
+        ':</span>'+
+
+        '<span class="gp-info-value '+
+        (
+            clase ||
+            ""
+        )+
+        '">'+
+
+        valor+
+
+        '</span>'+
+
+        '</div>'
+
+    );
+
+}
+
+
+/* =====================================================
+   RESUMEN
+===================================================== */
+
+function gpActualizarResumen(){
+
+    var compras = 0;
+    var pagado = 0;
+    var pendiente = 0;
+
+
+    gpGastos.forEach(
+        function(gasto){
+
+            compras +=
+                Number(
+                    gasto.total
+                ) || 0;
+
+
+            pagado +=
+                Number(
+                    gasto.montoPagado
+                ) || 0;
+
+
+            pendiente +=
+                Number(
+                    gasto.saldoPendiente
+                ) || 0;
+
+        }
+    );
+
+
+    gpId(
+        "gpTotalCompras"
+    ).textContent =
+        gpMoneda(
+            compras
+        );
+
+
+    gpId(
+        "gpTotalPagado"
+    ).textContent =
+        gpMoneda(
+            pagado
+        );
+
+
+    gpId(
+        "gpTotalPendiente"
+    ).textContent =
+        gpMoneda(
+            pendiente
+        );
+
+
+    gpId(
+        "gpCantidad"
+    ).textContent =
+        gpGastos.length;
+
+}
+
+
+/* =====================================================
+   MONEDA
+===================================================== */
+
+function gpMoneda(valor){
+
+    return new Intl.NumberFormat(
+        "es-MX",
+        {
+            style:"currency",
+            currency:"MXN"
+        }
+    ).format(
+        Number(valor) || 0
+    );
+
+}
+
+
+/* =====================================================
+   FECHA
+===================================================== */
+
+function gpFechaMostrar(fecha){
+
+    if(!fecha){
+        return "-";
+    }
+
+
+    var partes =
+        String(
+            fecha
+        ).split("-");
+
+
+    if(
+        partes.length !==
+        3
+    ){
+
+        return fecha;
+
+    }
+
+
+    return (
+        partes[2]+
+        "/"+
+        partes[1]+
+        "/"+
+        partes[0]
+    );
+
+}
+
+
+/* =====================================================
+   MENSAJE
+===================================================== */
+
+function gpMostrarMensaje(mensaje){
+
+    var toast =
+        gpId(
+            "gpToast"
+        );
+
+
+    if(!toast){
+        return;
+    }
+
+
+    toast.textContent =
+        mensaje;
+
+
+    toast.classList.add(
+        "gp-toast-show"
+    );
+
+
+    setTimeout(
+        function(){
+
+            toast.classList.remove(
+                "gp-toast-show"
+            );
+
+        },
+        2500
+    );
+
+}
+
+
+/* =====================================================
+   ACTUALIZAR TIPO DE GASTO
+===================================================== */
+
+function gpActualizarTipoGasto(){
+
+    var tipo =
+        gpId(
+            "gpTipoGasto"
+        ).value;
+
+
+    var articuloContainer =
+        gpId(
+            "gpArticuloContainer"
+        );
+
+
+    var conceptoContainer =
+        gpId(
+            "gpConceptoContainer"
+        );
+
+
+    var concepto =
+        gpId(
+            "gpConcepto"
+        );
+
+
+    if(
+        tipo ===
+        "articulo"
+    ){
+
+        articuloContainer
+            .classList
+            .remove(
+                "gp-articulo-oculto"
+            );
+
+
+        conceptoContainer
+            .classList
+            .remove(
+                "gp-articulo-oculto"
+            );
+
+
+        concepto.readOnly =
+            true;
+
+        concepto.placeholder =
+            "Se completa con el artículo seleccionado...";
+
+    }else{
+
+        articuloContainer
+            .classList
+            .add(
+                "gp-articulo-oculto"
+            );
+
+
+        conceptoContainer
+            .classList
+            .remove(
+                "gp-articulo-oculto"
+            );
+
+
+        concepto.readOnly =
+            false;
+
+        concepto.placeholder =
+            "Describe qué se compró...";
+
+    }
+
+}
+
+
+/* =====================================================
+   SUBMENÚS
+===================================================== */
+
+function gpOcultarSubpaneles(){
+
+    var panelPendientes =
+        gpId(
+            "gpPanelPendientes"
+        );
+
+    var panelProximos =
+        gpId(
+            "gpPanelProximos"
+        );
+
+    var panelReportes =
+        gpId(
+            "gpPanelReportes"
+        );
+
+
+    if(panelPendientes){
+
+        panelPendientes.classList.remove(
+            "gp-subpanel-visible"
+        );
+
+    }
+
+
+    if(panelProximos){
+
+        panelProximos.classList.remove(
+            "gp-subpanel-visible"
+        );
+
+    }
+
+
+    if(panelReportes){
+
+        panelReportes.classList.remove(
+            "gp-subpanel-visible"
+        );
+
+    }
+
+}
+
+
+function gpMostrarContenidoPrincipal(){
+
+    var principal =
+        gpId(
+            "gpContenidoPrincipal"
+        );
+
+    if(principal){
+
+        principal.classList.remove(
+            "gp-main-hidden"
+        );
+
+    }
+
+}
+
+
+function gpOcultarContenidoPrincipal(){
+
+    var principal =
+        gpId(
+            "gpContenidoPrincipal"
+        );
+
+    if(principal){
+
+        principal.classList.add(
+            "gp-main-hidden"
+        );
+
+    }
+
+}
+
+
+function gpLimpiarNavegacion(){
+
+    var botones =
+        document.querySelectorAll(
+            ".gp-nav-button"
+        );
+
+
+    botones.forEach(
+        function(boton){
+
+            boton.classList.remove(
+                "gp-nav-active"
+            );
+
+        }
+    );
+
+}
+
+
+function gpIrGastos(){
+
+    gpOcultarSubpaneles();
+
+    gpMostrarContenidoPrincipal();
+
+    gpLimpiarNavegacion();
+
+
+    var boton =
+        gpId(
+            "gpNavGastos"
+        );
+
+
+    if(boton){
+
+        boton.classList.add(
+            "gp-nav-active"
+        );
+
+    }
+
+
+    gpMostrarLista();
+
+}
+
+
+function gpIrPendientes(){
+
+    gpOcultarContenidoPrincipal();
+
+    gpOcultarSubpaneles();
+
+
+    var panel =
+        gpId(
+            "gpPanelPendientes"
+        );
+
+
+    if(panel){
+
+        panel.classList.add(
+            "gp-subpanel-visible"
+        );
+
+    }
+
+
+    gpLimpiarNavegacion();
+
+
+    var boton =
+        gpId(
+            "gpNavPendientes"
+        );
+
+
+    if(boton){
+
+        boton.classList.add(
+            "gp-nav-active"
+        );
+
+    }
+
+
+    gpMostrarPendientes();
+
+}
+
+
+function gpIrProximos(){
+
+    gpOcultarContenidoPrincipal();
+
+    gpOcultarSubpaneles();
+
+
+    var panel =
+        gpId(
+            "gpPanelProximos"
+        );
+
+
+    if(panel){
+
+        panel.classList.add(
+            "gp-subpanel-visible"
+        );
+
+    }
+
+
+    gpLimpiarNavegacion();
+
+
+    var boton =
+        gpId(
+            "gpNavProximos"
+        );
+
+
+    if(boton){
+
+        boton.classList.add(
+            "gp-nav-active"
+        );
+
+    }
+
+
+    gpMostrarProximos();
+
+}
+
+
+function gpIrReportes(){
+
+    gpOcultarContenidoPrincipal();
+
+    gpOcultarSubpaneles();
+
+
+    var panel =
+        gpId(
+            "gpPanelReportes"
+        );
+
+
+    if(panel){
+
+        panel.classList.add(
+            "gp-subpanel-visible"
+        );
+
+    }
+
+
+    gpLimpiarNavegacion();
+
+
+    var boton =
+        gpId(
+            "gpNavReportes"
+        );
+
+
+    if(boton){
+
+        boton.classList.add(
+            "gp-nav-active"
+        );
+
+    }
+
+
+    gpPrepararReporte();
+
+}
+
+
+/* =====================================================
+   PENDIENTES
+===================================================== */
+
+function gpMostrarPendientes(){
+
+    var contenedor =
+        gpId(
+            "gpPendientesLista"
+        );
+
+
+    if(!contenedor){
+        return;
+    }
+
+
+    var pendientes =
+        gpGastos.filter(
+            function(gasto){
+
+                return (
+                    Number(
+                        gasto.saldoPendiente
+                    ) > 0
+                );
+
+            }
+        );
+
+
+    pendientes.sort(
+        function(a,b){
+
+            var fechaA =
+                a.fechaVencimiento ||
+                "9999-12-31";
+
+            var fechaB =
+                b.fechaVencimiento ||
+                "9999-12-31";
+
+            return fechaA.localeCompare(
+                fechaB
+            );
+
+        }
+    );
+
+
+    if(
+        pendientes.length ===
+        0
+    ){
+
+        contenedor.innerHTML =
+            '<div class="gp-empty">'+
+            '<div class="gp-empty-icon">✅</div>'+
+            '<div>No hay pagos pendientes.</div>'+
+            '</div>';
+
+        return;
+
+    }
+
+
+    var html = "";
+
+
+    pendientes.forEach(
+        function(gasto){
+
+            html +=
+                gpCrearTarjetaEspecial(
+                    gasto,
+                    false
+                );
+
+        }
+    );
+
+
+    contenedor.innerHTML =
+        html;
+
+}
+
+
+/* =====================================================
+   PRÓXIMOS
+===================================================== */
+
+function gpMostrarProximos(){
+
+    var contenedor =
+        gpId(
+            "gpProximosLista"
+        );
+
+
+    if(!contenedor){
+        return;
+    }
+
+
+    var hoy =
+        gpFechaActual();
+
+
+    var proximos =
+        gpGastos.filter(
+            function(gasto){
+
+                if(
+                    Number(
+                        gasto.saldoPendiente
+                    ) <= 0
+                ){
+
+                    return false;
+
+                }
+
+
+                if(
+                    !gasto.fechaVencimiento
+                ){
+
+                    return false;
+
+                }
+
+
+                return (
+                    gasto.fechaVencimiento >=
+                    hoy
+                );
+
+            }
+        );
+
+
+    proximos.sort(
+        function(a,b){
+
+            return String(
+                a.fechaVencimiento
+            ).localeCompare(
+                String(
+                    b.fechaVencimiento
+                )
+            );
+
+        }
+    );
+
+
+    if(
+        proximos.length ===
+        0
+    ){
+
+        contenedor.innerHTML =
+            '<div class="gp-empty">'+
+            '<div class="gp-empty-icon">📅</div>'+
+            '<div>No hay próximos pagos registrados.</div>'+
+            '</div>';
+
+        return;
+
+    }
+
+
+    var html = "";
+
+
+    proximos.forEach(
+        function(gasto){
+
+            html +=
+                gpCrearTarjetaEspecial(
+                    gasto,
+                    true
+                );
+
+        }
+    );
+
+
+    contenedor.innerHTML =
+        html;
+
+}
+
+
+/* =====================================================
+   TARJETA ESPECIAL
+===================================================== */
+
+function gpCrearTarjetaEspecial(
+    gasto,
+    esProximo
+){
+
+    var clase =
+        esProximo
+        ? "gp-special-card gp-upcoming"
+        : "gp-special-card";
+
+
+    var vencimiento =
+        gasto.fechaVencimiento
+        ? gpFechaMostrar(
+            gasto.fechaVencimiento
+        )
+        : "Sin fecha";
+
+
+    return (
+
+        '<div class="'+
+        clase+
+        '">'+
+
+        '<div class="gp-special-provider">'+
+        gpEscapar(
+            gasto.proveedorNombre ||
+            "Proveedor"
+        )+
+        '</div>'+
+
+        '<div class="gp-special-row">'+
+
+        '<span class="gp-special-label">'+
+        'Folio'+
+        '</span>'+
+
+        '<span class="gp-special-value">'+
+        gpEscapar(
+            gasto.folio ||
+            "Sin folio"
+        )+
+        '</span>'+
+
+        '</div>'+
+
+        '<div class="gp-special-row">'+
+
+        '<span class="gp-special-label">'+
+        'Concepto'+
+        '</span>'+
+
+        '<span class="gp-special-value">'+
+        gpEscapar(
+            gasto.concepto ||
+            "-"
+        )+
+        '</span>'+
+
+        '</div>'+
+
+        '<div class="gp-special-row">'+
+
+        '<span class="gp-special-label">'+
+        'Saldo pendiente'+
+        '</span>'+
+
+        '<span class="gp-special-value gp-special-balance">'+
+        gpMoneda(
+            gasto.saldoPendiente
+        )+
+        '</span>'+
+
+        '</div>'+
+
+        '<div class="gp-special-row">'+
+
+        '<span class="gp-special-label">'+
+        'Fecha límite'+
+        '</span>'+
+
+        '<span class="gp-special-value gp-special-date">'+
+        vencimiento+
+        '</span>'+
+
+        '</div>'+
+
+        '<div class="gp-actions">'+
+
+        '<button '+
+        'type="button" '+
+        'class="gp-action gp-edit" '+
+        'data-gp-edit="'+
+        gpEscaparAttr(
+            gasto.id
+        )+
+        '">'+
+        'Editar'+
+        '</button>'+
+
+        '</div>'+
+
+        '</div>'
+
+    );
+
+}
+
+
+/* =====================================================
+   REPORTE
+===================================================== */
+
+function gpPrepararReporte(){
+
+    var inicio =
+        gpId(
+            "gpReporteFechaInicio"
+        );
+
+    var fin =
+        gpId(
+            "gpReporteFechaFin"
+        );
+
+
+    if(
+        !inicio ||
+        !fin
+    ){
+
+        return;
+
+    }
+
+
+    if(!inicio.value){
+
+        inicio.value =
+            gpFechaActual();
+
+    }
+
+
+    if(!fin.value){
+
+        fin.value =
+            gpFechaActual();
+
+    }
+
+
+    gpGenerarReporte();
+
+}
+
+
+function gpGenerarReporte(){
+
+    var inicio =
+        gpId(
+            "gpReporteFechaInicio"
+        ).value;
+
+
+    var fin =
+        gpId(
+            "gpReporteFechaFin"
+        ).value;
+
+
+    var resultado =
+        gpId(
+            "gpReporteResultados"
+        );
+
+
+    if(!resultado){
+        return;
+    }
+
+
+    if(
+        !inicio ||
+        !fin
+    ){
+
+        resultado.innerHTML =
+            '<div class="gp-empty">'+
+            '<div class="gp-empty-icon">📊</div>'+
+            '<div>Selecciona una fecha inicial y una fecha final.</div>'+
+            '</div>';
+
+        return;
+
+    }
+
+
+    if(
+        inicio >
+        fin
+    ){
+
+        resultado.innerHTML =
+            '<div class="gp-empty">'+
+            '<div class="gp-empty-icon">⚠️</div>'+
+            '<div>La fecha inicial no puede ser posterior a la fecha final.</div>'+
+            '</div>';
+
+        return;
+
+    }
+
+
+    var gastosPeriodo =
+        gpGastos.filter(
+            function(gasto){
+
+                var fecha =
+                    String(
+                        gasto.fechaCompra ||
+                        ""
+                    );
+
+
+                return (
+                    fecha >= inicio &&
+                    fecha <= fin
+                );
+
+            }
+        );
+
+
+    var total = 0;
+    var pagado = 0;
+    var pendiente = 0;
+
+
+    gastosPeriodo.forEach(
+        function(gasto){
+
+            total +=
+                Number(
+                    gasto.total
+                ) || 0;
+
+            pagado +=
+                Number(
+                    gasto.montoPagado
+                ) || 0;
+
+            pendiente +=
+                Number(
+                    gasto.saldoPendiente
+                ) || 0;
+
+        }
+    );
+
+
+    resultado.innerHTML =
+
+        '<div class="gp-report-card">'+
+
+        '<div class="gp-report-label">'+
+        'Periodo consultado'+
+        '</div>'+
+
+        '<div class="gp-report-value">'+
+        gpFechaMostrar(
+            inicio
+        )+
+        ' al '+
+        gpFechaMostrar(
+            fin
+        )+
+        '</div>'+
+
+        '</div>'+
+
+        '<div class="gp-report-card">'+
+
+        '<div class="gp-report-label">'+
+        'Total de gastos'+
+        '</div>'+
+
+        '<div class="gp-report-value">'+
+        gpMoneda(
+            total
+        )+
+        '</div>'+
+
+        '</div>'+
+
+        '<div class="gp-report-card">'+
+
+        '<div class="gp-report-label">'+
+        'Total pagado'+
+        '</div>'+
+
+        '<div class="gp-report-value">'+
+        gpMoneda(
+            pagado
+        )+
+        '</div>'+
+
+        '</div>'+
+
+        '<div class="gp-report-card">'+
+
+        '<div class="gp-report-label">'+
+        'Total pendiente'+
+        '</div>'+
+
+        '<div class="gp-report-value">'+
+        gpMoneda(
+            pendiente
+        )+
+        '</div>'+
+
+        '</div>'+
+
+        '<div class="gp-report-card">'+
+
+        '<div class="gp-report-label">'+
+        'Cantidad de gastos'+
+        '</div>'+
+
+        '<div class="gp-report-value">'+
+        gastosPeriodo.length+
+        '</div>'+
+
+        '</div>';
+
+}
+
+
+/* =====================================================
+   EVENTOS
+===================================================== */
+
+function gpActivarEventos(){
+
+    var botonNuevo =
+        gpId(
+            "gpBtnNuevo"
+        );
+
+
+    if(botonNuevo){
+
+        botonNuevo.addEventListener(
+            "click",
+            function(e){
+
+                e.preventDefault();
+
+                gpAbrirNuevo();
+
+            }
+        );
+
+    }
+
+
+    var cerrar =
+        gpId(
+            "gpBtnCerrar"
+        );
+
+
+    if(cerrar){
+
+        cerrar.addEventListener(
+            "click",
+            function(e){
+
+                e.preventDefault();
+
+                gpCerrarModal();
+
+            }
+        );
+
+    }
+
+
+    var cancelar =
+        gpId(
+            "gpBtnCancelar"
+        );
+
+
+    if(cancelar){
+
+        cancelar.addEventListener(
+            "click",
+            function(e){
+
+                e.preventDefault();
+
+                gpCerrarModal();
+
+            }
+        );
+
+    }
+
+
+    var formulario =
+        gpId(
+            "gpForm"
+        );
+
+
+    if(formulario){
+
+        formulario.addEventListener(
+            "submit",
+            gpGuardar
+        );
+
+    }
+
+
+    /* =================================================
+       IDEA 4
+       CAMPOS DE CÁLCULO
+    ================================================= */
+
+    [
+        "gpTotal",
+        "gpIvaPorcentaje",
+        "gpDescuento",
+        "gpPagado"
+    ]
+    .forEach(
+        function(id){
+
+            var campo =
+                gpId(id);
+
+
+            if(campo){
+
+                campo.addEventListener(
+                    "input",
+                    function(){
+
+                        gpSanitizarCampoMonetario(
+                            campo
+                        );
+
+                        gpCalcular();
+
+                    }
+                );
+
+
+                campo.addEventListener(
+                    "blur",
+                    function(){
+
+                        gpSanitizarCampoMonetario(
+                            campo
+                        );
+
+
+                        if(
+                            id !==
+                            "gpIvaPorcentaje"
+                        ){
+
+                            campo.value =
+                                gpFormatoCampoMonetario(
+                                    campo.value
+                                );
+
+                        }
+
+
+                        gpCalcular();
+
+                    }
+                );
+
+            }
+
+        }
+    );
+
+
+    var tipoGasto =
+        gpId(
+            "gpTipoGasto"
+        );
+
+
+    if(tipoGasto){
+
+        tipoGasto.addEventListener(
+            "change",
+            function(){
+
+                gpActualizarTipoGasto();
+
+            }
+        );
+
+    }
+
+
+    /* =================================================
+       IDEA 3
+       BÚSQUEDA DE ARTÍCULOS
+    ================================================= */
+
+    var buscadorArticulo =
+        gpId(
+            "gpBuscarArticulo"
+        );
+
+
+    if(buscadorArticulo){
+
+        buscadorArticulo.addEventListener(
+            "input",
+            function(){
+
+                gpId(
+                    "gpArticuloId"
+                ).value =
+                "";
+
+                gpId(
+                    "gpArticuloCodigo"
+                ).value =
+                "";
+
+                gpId(
+                    "gpArticuloNombre"
+                ).value =
+                "";
+
+                gpId(
+                    "gpArticuloCategoria"
+                ).value =
+                "";
+
+
+                gpId(
+                    "gpArticuloSeleccionado"
+                )
+                .classList.add(
+                    "gp-articulo-oculto"
+                );
+
+
+                gpMostrarArticulos();
+
+            }
+        );
+
+    }
+
+
+    var filtroCategoria =
+        gpId(
+            "gpFiltroCategoriaArticulo"
+        );
+
+
+    if(filtroCategoria){
+
+        filtroCategoria.addEventListener(
+            "change",
+            function(){
+
+                gpMostrarArticulos();
+
+            }
+        );
+
+    }
+
+
+    var resultadosArticulos =
+        gpId(
+            "gpArticuloResultados"
+        );
+
+
+    if(resultadosArticulos){
+
+        resultadosArticulos.addEventListener(
+            "click",
+            function(evento){
+
+                var boton =
+                    evento.target.closest
+                    ? evento.target.closest(
+                        "[data-gp-articulo-id]"
+                    )
+                    : null;
+
+
+                if(!boton){
+                    return;
+                }
+
+
+                evento.preventDefault();
+
+
+                gpSeleccionarArticulo(
+                    boton.getAttribute(
+                        "data-gp-articulo-id"
+                    )
+                );
+
+            }
+        );
+
+    }
+
+
+    /* =================================================
+       NUEVO
+       LISTA DE ARTÍCULOS (MULTI-ARTÍCULO)
+    ================================================= */
+
+    var botonAgregarArticulo =
+        gpId(
+            "gpBtnAgregarArticulo"
+        );
+
+
+    if(botonAgregarArticulo){
+
+        botonAgregarArticulo.addEventListener(
+            "click",
+            function(e){
+
+                e.preventDefault();
+
+                gpAgregarArticuloALista();
+
+            }
+        );
+
+    }
+
+
+    var articulosLista =
+        gpId(
+            "gpArticulosLista"
+        );
+
+
+    if(articulosLista){
+
+        articulosLista.addEventListener(
+            "click",
+            function(evento){
+
+                var eliminar =
+                    evento.target.closest
+                    ? evento.target.closest(
+                        "[data-gp-item-eliminar]"
+                    )
+                    : null;
+
+
+                if(!eliminar){
+                    return;
+                }
+
+
+                evento.preventDefault();
+
+
+                gpEliminarArticuloDeLista(
+                    eliminar.getAttribute(
+                        "data-gp-item-eliminar"
+                    )
+                );
+
+            }
+        );
+
+    }
+
+
+    var buscador =
+        gpId(
+            "gpBuscar"
+        );
+
+
+    if(buscador){
+
+        buscador.addEventListener(
+            "input",
+            gpMostrarLista
+        );
+
+    }
+
+
+    var filtroProveedor =
+        gpId(
+            "gpFiltroProveedor"
+        );
+
+
+    if(filtroProveedor){
+
+        filtroProveedor.addEventListener(
+            "change",
+            gpMostrarLista
+        );
+
+    }
+
+
+    var filtroEstado =
+        gpId(
+            "gpFiltroEstado"
+        );
+
+
+    if(filtroEstado){
+
+        filtroEstado.addEventListener(
+            "change",
+            gpMostrarLista
+        );
+
+    }
+
+
+    var lista =
+        gpId(
+            "gpLista"
+        );
+
+
+    if(lista){
+
+        lista.addEventListener(
+            "click",
+            function(evento){
+
+                var editar =
+                    evento.target.closest
+                    ? evento.target.closest(
+                        "[data-gp-edit]"
+                    )
+                    : null;
+
+
+                if(editar){
+
+                    evento.preventDefault();
+
+                    gpEditar(
+                        editar.getAttribute(
+                            "data-gp-edit"
+                        )
+                    );
+
+                    return;
+
+                }
+
+
+                var eliminar =
+                    evento.target.closest
+                    ? evento.target.closest(
+                        "[data-gp-delete]"
+                    )
+                    : null;
+
+
+                if(eliminar){
+
+                    evento.preventDefault();
+
+                    gpEliminar(
+                        eliminar.getAttribute(
+                            "data-gp-delete"
+                        )
+                    );
+
+                }
+
+            }
+        );
+
+    }
+
+
+    var modal =
+        gpId(
+            "gpModal"
+        );
+
+
+    if(modal){
+
+        modal.addEventListener(
+            "click",
+            function(evento){
+
+                if(
+                    evento.target ===
+                    modal
+                ){
+
+                    gpCerrarModal();
+
+                }
+
+            }
+        );
+
+    }
+
+
+    /* =================================================
+       SUBMENÚ
+    ================================================= */
+
+    var navGastos =
+        gpId(
+            "gpNavGastos"
+        );
+
+
+    if(navGastos){
+
+        navGastos.addEventListener(
+            "click",
+            function(){
+
+                gpIrGastos();
+
+            }
+        );
+
+    }
+
+
+    var navPendientes =
+        gpId(
+            "gpNavPendientes"
+        );
+
+
+    if(navPendientes){
+
+        navPendientes.addEventListener(
+            "click",
+            function(){
+
+                gpIrPendientes();
+
+            }
+        );
+
+    }
+
+
+    var navProximos =
+        gpId(
+            "gpNavProximos"
+        );
+
+
+    if(navProximos){
+
+        navProximos.addEventListener(
+            "click",
+            function(){
+
+                gpIrProximos();
+
+            }
+        );
+
+    }
+
+
+    var navReportes =
+        gpId(
+            "gpNavReportes"
+        );
+
+
+    if(navReportes){
+
+        navReportes.addEventListener(
+            "click",
+            function(){
+
+                gpIrReportes();
+
+            }
+        );
+
+    }
+
+
+    var botonReporte =
+        gpId(
+            "gpBtnReporte"
+        );
+
+
+    if(botonReporte){
+
+        botonReporte.addEventListener(
+            "click",
+            function(){
+
+                gpGenerarReporte();
+
+            }
+        );
+
+    }
+
+
+    var reporteInicio =
+        gpId(
+            "gpReporteFechaInicio"
+        );
+
+
+    if(reporteInicio){
+
+        reporteInicio.addEventListener(
+            "change",
+            function(){
+
+                var panel =
+                    gpId(
+                        "gpPanelReportes"
+                    );
+
+                if(
+                    panel &&
+                    panel.classList.contains(
+                        "gp-subpanel-visible"
+                    )
+                ){
+
+                    gpGenerarReporte();
+
+                }
+
+            }
+        );
+
+    }
+
+
+    var reporteFin =
+        gpId(
+            "gpReporteFechaFin"
+        );
+
+
+    if(reporteFin){
+
+        reporteFin.addEventListener(
+            "change",
+            function(){
+
+                var panel =
+                    gpId(
+                        "gpPanelReportes"
+                    );
+
+                if(
+                    panel &&
+                    panel.classList.contains(
+                        "gp-subpanel-visible"
+                    )
+                ){
+
+                    gpGenerarReporte();
+
+                }
+
+            }
+        );
+
+    }
+
+
+    /* =================================================
+       EDITAR EN PENDIENTES / PRÓXIMOS
+    ================================================= */
+
+    document.addEventListener(
+        "click",
+        function(evento){
+
+            var editar =
+                evento.target.closest
+                ? evento.target.closest(
+                    "[data-gp-edit]"
+                )
+                : null;
+
+
+            if(!editar){
+                return;
+            }
+
+
+            if(
+                gpId("gpLista") &&
+                gpId("gpLista").contains(
+                    editar
+                )
+            ){
+
+                return;
+
+            }
+
+
+            evento.preventDefault();
+
+
+            gpEditar(
+                editar.getAttribute(
+                    "data-gp-edit"
+                )
+            );
+
+        }
+    );
+
+}
+
+
+/* =====================================================
+   INICIAR
+===================================================== */
+
+function gpIniciar(){
+
+    if(
+        gpInicializado
+    ){
+
+        return;
+
+    }
+
+
+    gpInicializado =
+        true;
+
+
+    gpCargarDatos();
+
+    gpCargarProveedores();
+
+    gpCargarInventario();
+
+    gpCargarCategoriasInventario();
+
+
+    var fecha =
+        gpId(
+            "gpFechaCompra"
+        );
+
+
+    if(fecha){
+
+        fecha.value =
+            gpFechaActual();
+
+    }
+
+
+    gpActualizarTipoGasto();
+
+    gpMostrarLista();
+
+    gpActivarEventos();
+
+    gpDepuracionRevisarTodo();
+
+}
+
+
+/* =====================================================
+   ARRANQUE
+===================================================== */
+
+if(
+    document.readyState ===
+    "loading"
+){
+
+    document.addEventListener(
+        "DOMContentLoaded",
+        gpIniciar,
+        {
+            once:true
+        }
+    );
+
+}else{
+
+    gpIniciar();
+
+}
+
+})();
+
+</script>
+
+</body>
+</html>

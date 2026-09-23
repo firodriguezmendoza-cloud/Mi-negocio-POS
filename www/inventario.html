@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<!-- =========================================================
+     BLOQUE DE SEGURIDAD "SOLO ADMINISTRADOR"
+     Versión actualizada: ahora respeta la configuración de
+     "Módulos Bloqueados" definida en Gestión de Usuarios.
+
+     ⚠️ IMPORTANTE AL PEGAR ESTE BLOQUE EN CADA MÓDULO:
+     Cambia el valor de NOMBRE_MODULO_SEGURIDAD según el
+     módulo donde lo estés pegando. Usa exactamente una de
+     estas claves (deben coincidir con Gestión de Usuarios):
+
+       'agregarProductos'  → Agregar Productos
+       'inventario'        → Inventario
+       'merma'             → Merma
+       'proveedores'       → Directorio de Proveedores
+       'gastos'            → Gestión de Gastos (ya aplicado)
+     ========================================================= -->
+
+<div id="modalSeguridadAdmin" style="position:fixed; top:0; left:0; width:100%; height:100%; background:#0f172a; z-index:999999; display:flex; align-items:center; justify-content:center; font-family:sans-serif;">
+  <div style="background:white; padding:24px; border-radius:16px; width:85%; max-width:300px; text-align:center; box-shadow:0 10px 25px rgba(0,0,0,0.5);">
+    <div style="font-size:32px; margin-bottom:8px;">🔐</div>
+    <h3 style="margin:0 0 6px 0; font-size:16px; color:#1e293b;">Área Exclusiva de Administrador</h3>
+    <p style="margin:0 0 14px 0; font-size:11px; color:#64748b;">Los cajeros no tienen acceso a este menú. Ingresa tu PIN de Administrador.</p>
+    <input type="password" id="inputPinAdmin" placeholder="••••" maxlength="6" style="width:100%; padding:12px; font-size:22px; text-align:center; border:1px solid #cbd5e1; border-radius:10px; margin-bottom:12px; box-sizing:border-box; letter-spacing:6px;" />
+    <button onclick="verificarSoloAdmin()" style="width:100%; background:#7c3aed; color:white; border:none; padding:12px; border-radius:10px; font-weight:bold; font-size:13px; cursor:pointer;">Verificar Acceso</button>
+  </div>
+</div>
+
+<script>
+  // ⚠️ CAMBIA ESTE VALOR EN CADA MÓDULO (ver lista arriba)
+  var NOMBRE_MODULO_SEGURIDAD = 'inventario';
+
+  // Sin configuración guardada todavía = módulo BLOQUEADO por
+  // defecto (igual que el comportamiento original), hasta que
+  // el Administrador entre a Gestión de Usuarios y lo desbloquee.
+  function moduloRequierePinAdmin() {
+    var datos = localStorage.getItem('pos_db_modulos_bloqueados');
+    if (!datos) return true;
+    try {
+      var config = JSON.parse(datos);
+      if (!config || typeof config !== 'object' || Array.isArray(config)) return true;
+      return config[NOMBRE_MODULO_SEGURIDAD] !== false;
+    } catch (e) {
+      return true;
+    }
+  }
+
+  window.addEventListener('DOMContentLoaded', () => {
+    const datosUsuarios = localStorage.getItem('pos_db_users');
+    if (!datosUsuarios) {
+      document.getElementById('modalSeguridadAdmin').style.display = 'none';
+      return;
+    }
+
+    try {
+      const usuarios = JSON.parse(datosUsuarios);
+      const existeAdmin = Array.isArray(usuarios) && usuarios.some(u => u.rol === 'administrador');
+      if (!existeAdmin || !moduloRequierePinAdmin()) {
+        document.getElementById('modalSeguridadAdmin').style.display = 'none';
+      }
+    } catch (e) {
+      document.getElementById('modalSeguridadAdmin').style.display = 'none';
+    }
+  });
+
+  function verificarSoloAdmin() {
+    const pinIngresado = document.getElementById('inputPinAdmin').value.trim();
+    const datosUsuarios = localStorage.getItem('pos_db_users');
+
+    if (!datosUsuarios) {
+      document.getElementById('modalSeguridadAdmin').style.display = 'none';
+      return;
+    }
+
+    const usuarios = JSON.parse(datosUsuarios);
+    const existeAdmin = usuarios.some(u => u.rol === 'administrador');
+
+    if (!existeAdmin || !moduloRequierePinAdmin()) {
+      document.getElementById('modalSeguridadAdmin').style.display = 'none';
+      return;
+    }
+
+    const usuarioValido = usuarios.find(u => String(u.pin) === String(pinIngresado) && u.rol === 'administrador');
+
+    if (usuarioValido) {
+      document.getElementById('modalSeguridadAdmin').style.display = 'none';
+    } else {
+      alert("⛔ Acceso denegado. Este menú está restringido únicamente a Administradores.");
+      document.getElementById('inputPinAdmin').value = "";
+    }
+  }
+</script>
+
+ <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventario General</title>
+    <!-- Librería para el escáner de código de barras con la cámara trasera -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <!-- NUEVO: FontAwesome, para el ícono de cámara (igual que Caja/Agregar Productos) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: Arial, sans-serif; }
+        body { background-color: #f4f6f9; padding: 10px; color: #333; }
+        h2 { text-align: center; margin-bottom: 15px; color: #2c3e50; font-size: 20px; }
+        .controles { display: flex; flex-direction: column; gap: 10px; margin-bottom: 15px; }
+        
+        /* Contenedor barra de búsqueda + botón cámara al costado derecho */
+        .fila-busqueda { display: flex; gap: 8px; align-items: center; }
+        .fila-busqueda input { flex: 1; }
+        .btn-camara { background-color: #3498db; padding: 12px 15px; font-size: 16px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; color: white; white-space: nowrap; height: 48px; display: flex; align-items: center; justify-content: center; }
+
+        input, select { padding: 12px; font-size: 16px; border: 1px solid #ccc; border-radius: 8px; width: 100%; outline: none; background: white; }
+        
+        .tarjeta-producto { background: white; padding: 12px; border-radius: 8px; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
+        .info p { font-size: 14px; margin-bottom: 4px; }
+        .info strong { color: #2c3e50; }
+        .acciones-prod { display: flex; flex-direction: column; gap: 5px; }
+        .btn-eliminar { background-color: #e74c3c; padding: 6px 12px; font-size: 13px; border-radius: 6px; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        #reader { width: 100%; display: none; margin-bottom: 15px; border-radius: 8px; overflow: hidden; background: #000; }
+
+        /* NUEVO: alertas visuales de stock */
+        .tarjeta-producto.stock-agotado { border-left: 4px solid #dc2626; }
+        .tarjeta-producto.stock-bajo { border-left: 4px solid #f59e0b; }
+        .badge-stock { display: inline-block; font-size: 10px; font-weight: bold; padding: 2px 7px; border-radius: 999px; margin-left: 6px; }
+        .badge-stock.agotado { background: #fee2e2; color: #b91c1c; }
+        .badge-stock.bajo { background: #fef3c7; color: #92400e; }
+        .badge-stock.ok { background: #dcfce7; color: #166534; }
+        .badge-inactivo { display: inline-block; font-size: 10px; font-weight: bold; padding: 2px 7px; border-radius: 999px; margin-left: 6px; background: #e2e8f0; color: #475569; }
+        .tarjeta-producto.producto-inactivo { opacity: 0.55; }
+        .precio-solo-lectura { display: inline-block; padding: 2px 4px; font-size: 13px; font-weight: bold; }
+        .btn-kardex { background-color: #6366f1; padding: 6px 12px; font-size: 13px; border-radius: 6px; color: white; border: none; cursor: pointer; font-weight: bold; }
+        .btn-ajuste { background-color: #0f766e; padding: 6px 12px; font-size: 13px; border-radius: 6px; color: white; border: none; cursor: pointer; font-weight: bold; }
+
+        /* NUEVO: línea roja animada del lector de código de barras */
+        .gp-scanner-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 10; }
+        .gp-scanner-line-wrap { position: relative; width: 280px; max-width: 78%; height: 100px; }
+        .gp-scanner-line { position: absolute; left: 0; top: 4%; width: 100%; height: 2px; border-radius: 2px; background: #ef4444; box-shadow: 0 0 8px 2px rgba(239, 68, 68, 0.85); animation: gp-scan-move 1.8s ease-in-out infinite; }
+        @keyframes gp-scan-move { 0% { top: 4%; } 50% { top: 92%; } 100% { top: 4%; } }
+        #readerWrap { position: relative; }
+
+        /* MODAL KARDEX */
+        .modal-kardex-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: none; justify-content: center; align-items: center; z-index: 10001; padding: 15px; }
+        .modal-kardex-contenido { background: #fff; border-radius: 16px; width: 100%; max-width: 420px; max-height: 80vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
+        .modal-kardex-header { background: #1e293b; color: #fff; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: bold; }
+        .modal-kardex-body { padding: 12px 16px; overflow-y: auto; font-size: 12px; }
+        .fila-kardex { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f1f5f9; }
+        .fila-kardex .tipo-entrada { color: #15803d; font-weight: bold; }
+        .fila-kardex .tipo-salida { color: #b91c1c; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h2>Inventario General</h2>
+    
+    <div class="controles">
+        <div class="fila-busqueda">
+            <input type="text" id="buscador" placeholder="Buscar por nombre o código..." onkeyup="filtrarInventario()">
+            <button class="btn-camara" onclick="iniciarCamaraTrasera()"><i class="fa-solid fa-barcode"></i></button>
+        </div>
+        
+        <!-- Visor de la cámara trasera -->
+        <div id="contenedorReaderInv" style="display:none;">
+          <div id="readerWrap">
+            <div id="reader"></div>
+            <div id="scannerOverlayInv" class="gp-scanner-overlay" style="display:none;">
+              <div class="gp-scanner-line-wrap"><div class="gp-scanner-line"></div></div>
+            </div>
+          </div>
+          <button class="btn-eliminar" onclick="cerrarCamaraTrasera()" style="width:100%; margin-top:8px;">
+            Cerrar Cámara
+          </button>
+        </div>
+
+        <select id="filtroTipo" onchange="actualizarFiltrosUI()">
+            <option value="todos">Ver Todos los Productos</option>
+            <option value="categoria">Filtrar por Categoría</option>
+            <option value="unidad">Filtrar por Unidad de Medida</option>
+            <option value="stockBajo">Solo Stock Bajo / Agotado</option>
+        </select>
+
+        <select id="filtroDinamico" style="display:none;" onchange="filtrarInventario()"></select>
+    </div>
+
+    <div id="listaInventario"></div>
+
+    <!-- MODAL KÁRDEX POR PRODUCTO -->
+    <div id="modalKardex" class="modal-kardex-overlay">
+      <div class="modal-kardex-contenido">
+        <div class="modal-kardex-header">
+          <span id="tituloKardex">Historial del Producto</span>
+          <button onclick="cerrarKardex()" style="background:none; border:none; color:#fff; font-size:18px; cursor:pointer;">✕</button>
+        </div>
+        <div id="cuerpoKardex" class="modal-kardex-body"></div>
+      </div>
+    </div>
+
+    <!-- NUEVO: MODAL DE AJUSTE DE STOCK POR CONTEO FÍSICO -->
+    <div id="modalAjusteStock" class="modal-kardex-overlay">
+      <div class="modal-kardex-contenido">
+        <div class="modal-kardex-header" style="background:#0f766e;">
+          <span>Ajustar Stock (Conteo Físico)</span>
+          <button onclick="cerrarAjusteStock()" style="background:none; border:none; color:#fff; font-size:18px; cursor:pointer;">✕</button>
+        </div>
+        <div class="modal-kardex-body">
+          <p style="font-weight:bold; margin-bottom:4px;" id="nombreProductoAjuste">Producto</p>
+          <p style="color:#64748b; margin-bottom:12px;">Stock actual en el sistema: <strong id="stockActualAjuste">0</strong></p>
+
+          <label style="display:block; font-weight:bold; margin-bottom:4px; color:#334155;">Cantidad física real (contada en tienda):</label>
+          <input type="number" step="any" id="inputCantidadFisica" placeholder="0"
+                 style="width:100%; padding:10px; font-size:16px; border:1px solid #cbd5e1; border-radius:8px; margin-bottom:10px;">
+
+          <p id="previewDiferenciaAjuste" style="font-weight:bold; text-align:center; margin-bottom:12px; min-height:18px;"></p>
+
+          <button onclick="confirmarAjusteStock()" style="width:100%; background:#0f766e; color:#fff; border:none; padding:12px; border-radius:8px; font-weight:bold; cursor:pointer;">
+            Guardar Ajuste
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+        const DB_KEY = 'pos_db_products';
+        const DB_VENTAS_KEY = 'pos_db_ventas';
+        const DB_KARDEX_KEY = 'pos_db_kardex';
+        let html5QrCode = null;
+
+        window.addEventListener('storage', function(e) {
+            if (e.key === DB_KEY || e.key === "inventario_productos") {
+                renderizarInventario(obtenerInventario());
+            }
+        });
+
+        function obtenerInventario() {
+            let datos = localStorage.getItem(DB_KEY);
+            if (!datos) {
+                datos = localStorage.getItem("inventario_productos");
+            }
+            if (!datos) {
+                let inicial = [
+                    
+                ];
+                localStorage.setItem(DB_KEY, JSON.stringify(inicial));
+                return inicial;
+            }
+            let parsed = JSON.parse(datos);
+            return parsed.map(p => ({
+                ...p,
+                precio: p.precio !== undefined ? p.precio : (p.venta !== undefined ? p.venta : 0),
+                costo: p.costo !== undefined ? p.costo : 0,
+                stockMinimo: p.stockMinimo !== undefined ? p.stockMinimo : 0,
+                activo: p.activo !== false
+            }));
+        }
+
+        function guardarBD(productos) {
+            localStorage.setItem(DB_KEY, JSON.stringify(productos));
+            renderizarInventario(productos);
+        }
+
+        // NUEVO: registra un movimiento en el kárdex compartido
+        function registrarMovimientoKardex(mov) {
+          try {
+            const historial = JSON.parse(localStorage.getItem(DB_KARDEX_KEY) || '[]');
+            historial.unshift({
+              id: Date.now() + '_' + Math.random().toString(36).substring(2, 8),
+              fecha: new Date().toISOString(),
+              ...mov
+            });
+            localStorage.setItem(DB_KARDEX_KEY, JSON.stringify(historial));
+          } catch (e) {}
+        }
+
+        // NUEVO: ¿este producto aparece en alguna venta registrada?
+        function productoTieneVentas(prodId) {
+          const historial = JSON.parse(localStorage.getItem(DB_VENTAS_KEY) || '[]');
+          return historial.some(venta =>
+            Array.isArray(venta.items) &&
+            venta.items.some(item => String(item.id) === String(prodId))
+          );
+        }
+
+        function renderizarInventario(productos) {
+            const contenedor = document.getElementById("listaInventario");
+            contenedor.innerHTML = "";
+            
+            if (productos.length === 0) {
+                contenedor.innerHTML = "<p style='text-align:center; color:#777;'>No hay productos registrados.</p>";
+                return;
+            }
+
+            productos.forEach((p) => {
+                let productosTotales = obtenerInventario();
+                let indexReal = productosTotales.findIndex(item => String(item.id) === String(p.id) || String(item.codigo) === String(p.codigo));
+
+                let precioVenta = p.precio !== undefined ? p.precio : (p.venta !== undefined ? p.venta : 0);
+                let stock = parseFloat(p.stock) || 0;
+                let stockMinimo = parseFloat(p.stockMinimo) || 0;
+                let activo = p.activo !== false;
+
+                // NUEVO: alerta visual de stock
+                let claseAlerta = '';
+                let badgeStock = '';
+                if (stock <= 0) {
+                    claseAlerta = 'stock-agotado';
+                    badgeStock = '<span class="badge-stock agotado">AGOTADO</span>';
+                } else if (stockMinimo > 0 && stock <= stockMinimo) {
+                    claseAlerta = 'stock-bajo';
+                    badgeStock = '<span class="badge-stock bajo">STOCK BAJO</span>';
+                }
+
+                const badgeInactivo = activo ? '' : '<span class="badge-inactivo">INACTIVO</span>';
+                const claseInactivo = activo ? '' : 'producto-inactivo';
+
+                // NUEVO: si está inactivo, todo es de solo lectura (sin precio editable ni acciones)
+                const camposPrecio = `Costo: <span class="precio-solo-lectura">$${p.costo.toFixed(2)}</span> | Venta: <span class="precio-solo-lectura" style="color:#27ae60;">$${precioVenta.toFixed(2)}</span>`;
+
+                const botonesAccion = activo
+                  ? `
+                    <button class="btn-ajuste" onclick="abrirAjusteStock('${p.id}', '${(p.nombre || '').replace(/'/g, "\\'")}', ${stock})">Ajustar Stock</button>
+                    <button class="btn-kardex" onclick="abrirKardex('${p.id}', '${(p.nombre || '').replace(/'/g, "\\'")}')">Historial</button>
+                    <button class="btn-eliminar" onclick="eliminarProducto('${p.id}')">Borrar</button>
+                  `
+                  : `
+                    <button class="btn-kardex" onclick="abrirKardex('${p.id}', '${(p.nombre || '').replace(/'/g, "\\'")}')">Historial</button>
+                  `;
+
+                contenedor.innerHTML += `
+                    <div class="tarjeta-producto ${claseAlerta} ${claseInactivo}">
+                        <div class="info">
+                            <p><strong>${p.nombre}</strong> (${p.codigo}) ${badgeStock}${badgeInactivo}</p>
+                            <p>Cat: ${p.categoria || 'General'} | Medida: ${p.unidad || 'pz'}</p>
+                            <p>Stock: <strong>${p.stock}</strong>${stockMinimo > 0 ? ' (mín: ' + stockMinimo + ')' : ''} | ${camposPrecio}</p>
+                        </div>
+                        <div class="acciones-prod">
+                            ${botonesAccion}
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        // NUEVO: reemplaza el borrado directo. Si el producto ya tiene
+        // ventas registradas, se marca Inactivo en vez de borrarlo
+        // (misma lógica de seguridad que en Agregar Productos).
+        function eliminarProducto(prodId) {
+            let productos = obtenerInventario();
+            const prod = productos.find(p => String(p.id) === String(prodId));
+            if (!prod) return;
+
+            if (productoTieneVentas(prodId)) {
+                if (confirm(`"${prod.nombre}" ya tiene ventas registradas.\n\nPor seguridad no se puede eliminar (se perdería el historial). Se marcará como INACTIVO.\n\n¿Continuar?`)) {
+                    prod.activo = false;
+                    guardarBD(productos);
+                    actualizarFiltrosUI();
+                }
+                return;
+            }
+
+            if (confirm("¿Estás seguro de eliminar este producto del inventario? Esta acción no se puede deshacer.")) {
+                productos = productos.filter(p => String(p.id) !== String(prodId));
+                guardarBD(productos);
+                actualizarFiltrosUI();
+            }
+        }
+
+        // NUEVO: abrir/cerrar y renderizar el kárdex de un producto
+        function abrirKardex(prodId, nombre) {
+          document.getElementById('tituloKardex').innerText = 'Historial: ' + nombre;
+          const historial = JSON.parse(localStorage.getItem(DB_KARDEX_KEY) || '[]')
+            .filter(m => String(m.productoId) === String(prodId))
+            .sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+
+          const cuerpo = document.getElementById('cuerpoKardex');
+
+          if (historial.length === 0) {
+            cuerpo.innerHTML = '<p style="text-align:center; color:#94a3b8; padding:16px 0;">No hay movimientos registrados para este producto.</p>';
+          } else {
+            let html = '';
+            historial.forEach(m => {
+              const fechaFmt = new Date(m.fecha).toLocaleString();
+              const signo = m.tipo === 'entrada' ? '+' : '-';
+              const claseTipo = m.tipo === 'entrada' ? 'tipo-entrada' : 'tipo-salida';
+              html += `
+                <div class="fila-kardex">
+                  <div>
+                    <div><strong>${m.motivo || ''}</strong></div>
+                    <div style="color:#94a3b8; font-size:10px;">${fechaFmt}${m.referencia ? ' · Ref: ' + m.referencia : ''}</div>
+                  </div>
+                  <div class="${claseTipo}">${signo}${m.cantidad}</div>
+                </div>
+              `;
+            });
+            cuerpo.innerHTML = html;
+          }
+
+          document.getElementById('modalKardex').style.display = 'flex';
+        }
+
+        function cerrarKardex() {
+          document.getElementById('modalKardex').style.display = 'none';
+        }
+
+        // NUEVO: AJUSTE DE STOCK POR CONTEO FÍSICO
+        let ajusteProductoActualId = null;
+        let ajusteProductoActualNombre = '';
+        let ajusteStockSistema = 0;
+
+        function abrirAjusteStock(prodId, nombre, stockSistema) {
+          ajusteProductoActualId = prodId;
+          ajusteProductoActualNombre = nombre;
+          ajusteStockSistema = parseFloat(stockSistema) || 0;
+
+          document.getElementById('nombreProductoAjuste').innerText = nombre;
+          document.getElementById('stockActualAjuste').innerText = ajusteStockSistema;
+          document.getElementById('inputCantidadFisica').value = ajusteStockSistema;
+          document.getElementById('previewDiferenciaAjuste').innerText = '';
+          document.getElementById('modalAjusteStock').style.display = 'flex';
+
+          // Vista previa de la diferencia mientras se escribe
+          const input = document.getElementById('inputCantidadFisica');
+          input.oninput = function () {
+            const preview = document.getElementById('previewDiferenciaAjuste');
+            const cantidadFisica = parseFloat(input.value);
+            if (isNaN(cantidadFisica)) {
+              preview.innerText = '';
+              return;
+            }
+            const diferencia = cantidadFisica - ajusteStockSistema;
+            if (diferencia === 0) {
+              preview.innerText = 'Sin diferencia';
+              preview.style.color = '#64748b';
+            } else if (diferencia > 0) {
+              preview.innerText = 'Se registrará una ENTRADA de +' + diferencia;
+              preview.style.color = '#15803d';
+            } else {
+              preview.innerText = 'Se registrará una SALIDA de ' + diferencia;
+              preview.style.color = '#b91c1c';
+            }
+          };
+          input.oninput();
+        }
+
+        function cerrarAjusteStock() {
+          document.getElementById('modalAjusteStock').style.display = 'none';
+        }
+
+        function confirmarAjusteStock() {
+          const cantidadFisica = parseFloat(document.getElementById('inputCantidadFisica').value);
+
+          if (isNaN(cantidadFisica) || cantidadFisica < 0) {
+            alert('Por favor ingresa una cantidad física válida.');
+            return;
+          }
+
+          const diferencia = cantidadFisica - ajusteStockSistema;
+
+          if (diferencia === 0) {
+            alert('No hay diferencia que ajustar: la cantidad física coincide con el sistema.');
+            cerrarAjusteStock();
+            return;
+          }
+
+          let productos = obtenerInventario();
+          const prod = productos.find(p => String(p.id) === String(ajusteProductoActualId));
+          if (!prod) {
+            cerrarAjusteStock();
+            return;
+          }
+
+          prod.stock = cantidadFisica;
+          guardarBD(productos);
+
+          registrarMovimientoKardex({
+            productoId: ajusteProductoActualId,
+            productoNombre: ajusteProductoActualNombre,
+            tipo: diferencia > 0 ? 'entrada' : 'salida',
+            cantidad: Math.abs(diferencia),
+            motivo: 'Ajuste por conteo físico',
+            origen: 'inventario',
+            referencia: ''
+          });
+
+          alert('✅ Stock ajustado correctamente. Sistema anterior: ' + ajusteStockSistema + ' → Físico: ' + cantidadFisica + ' (' + (diferencia > 0 ? '+' : '') + diferencia + ')');
+
+          cerrarAjusteStock();
+          actualizarFiltrosUI();
+        }
+
+        function actualizarFiltrosUI() {
+            let tipo = document.getElementById("filtroTipo").value;
+            let selectDinamico = document.getElementById("filtroDinamico");
+            let productos = obtenerInventario();
+
+            if (tipo === "todos" || tipo === "stockBajo") {
+                selectDinamico.style.display = "none";
+                selectDinamico.innerHTML = "";
+            } else if (tipo === "categoria") {
+                selectDinamico.style.display = "block";
+                let categorias = [...new Set(productos.map(p => p.categoria || "General"))];
+                selectDinamico.innerHTML = "<option value=''>Seleccione categoría...</option>" + categorias.map(c => `<option value="${c}">${c}</option>`).join('');
+            } else if (tipo === "unidad") {
+                selectDinamico.style.display = "block";
+                let unidades = [...new Set(productos.map(p => p.unidad || "pz"))];
+                selectDinamico.innerHTML = "<option value=''>Seleccione unidad...</option>" + unidades.map(u => `<option value="${u}">${u}</option>`).join('');
+            }
+            filtrarInventario();
+        }
+
+        function filtrarInventario() {
+            let texto = document.getElementById("buscador").value.toLowerCase();
+            let tipo = document.getElementById("filtroTipo").value;
+            let valorFiltro = document.getElementById("filtroDinamico").value;
+            let productos = obtenerInventario();
+
+            let filtrados = productos.filter(p => {
+                let coincideTexto = p.nombre.toLowerCase().includes(texto) || p.codigo.toLowerCase().includes(texto) || (p.categoria && p.categoria.toLowerCase().includes(texto));
+                let coincideCriterio = true;
+
+                if (tipo === "categoria" && valorFiltro) {
+                    coincideCriterio = (p.categoria || "General") === valorFiltro;
+                } else if (tipo === "unidad" && valorFiltro) {
+                    coincideCriterio = (p.unidad || "pz") === valorFiltro;
+                } else if (tipo === "stockBajo") {
+                    const stock = parseFloat(p.stock) || 0;
+                    const stockMinimo = parseFloat(p.stockMinimo) || 0;
+                    coincideCriterio = stock <= 0 || (stockMinimo > 0 && stock <= stockMinimo);
+                }
+                return coincideTexto && coincideCriterio;
+            });
+
+            renderizarInventario(filtrados);
+        }
+
+        // NUEVO: escáner con detector nativo, formatos de retail,
+        // enfoque continuo post-inicio y línea roja animada
+        function iniciarCamaraTrasera() {
+            const contenedor = document.getElementById("contenedorReaderInv");
+            const readerDiv = document.getElementById("reader");
+            const overlay = document.getElementById("scannerOverlayInv");
+            contenedor.style.display = "block";
+            readerDiv.style.display = "block";
+            overlay.style.display = "flex";
+
+            if (!html5QrCode) {
+                html5QrCode = new Html5Qrcode("reader", {
+                    formatsToSupport: [
+                        Html5QrcodeSupportedFormats.EAN_13,
+                        Html5QrcodeSupportedFormats.EAN_8,
+                        Html5QrcodeSupportedFormats.UPC_A,
+                        Html5QrcodeSupportedFormats.UPC_E,
+                        Html5QrcodeSupportedFormats.CODE_128,
+                        Html5QrcodeSupportedFormats.CODE_39,
+                        Html5QrcodeSupportedFormats.CODABAR,
+                        Html5QrcodeSupportedFormats.ITF,
+                        Html5QrcodeSupportedFormats.QR_CODE
+                    ],
+                    useBarCodeDetectorIfSupported: true,
+                    verbose: false
+                });
+            }
+
+            html5QrCode.start(
+                { facingMode: "environment" },
+                { fps: 20, qrbox: { width: 280, height: 100 }, aspectRatio: 1.7777778 },
+                (decodedText) => {
+                    document.getElementById("buscador").value = decodedText;
+                    filtrarInventario();
+                    cerrarCamaraTrasera();
+                },
+                (errorMessage) => {}
+            ).then(() => {
+                try {
+                  const video = document.querySelector('#reader video');
+                  const track = video && video.srcObject ? video.srcObject.getVideoTracks()[0] : null;
+                  if (track && typeof track.applyConstraints === 'function') {
+                    track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+                  }
+                } catch (e) {}
+            }).catch(err => {
+                alert("No se pudo acceder a la cámara trasera: " + err);
+                contenedor.style.display = "none";
+                readerDiv.style.display = "none";
+                overlay.style.display = "none";
+            });
+        }
+
+        // NUEVO: botón para cerrar la cámara manualmente, igual que en
+        // Caja, Agregar Productos y Merma
+        function cerrarCamaraTrasera() {
+            const contenedor = document.getElementById("contenedorReaderInv");
+            const readerDiv = document.getElementById("reader");
+            const overlay = document.getElementById("scannerOverlayInv");
+
+            if (html5QrCode && html5QrCode.isScanning) {
+                html5QrCode.stop().then(() => {
+                    contenedor.style.display = "none";
+                    readerDiv.style.display = "none";
+                    overlay.style.display = "none";
+                }).catch(() => {
+                    contenedor.style.display = "none";
+                    readerDiv.style.display = "none";
+                    overlay.style.display = "none";
+                });
+            } else {
+                contenedor.style.display = "none";
+                readerDiv.style.display = "none";
+                overlay.style.display = "none";
+            }
+        }
+
+        renderizarInventario(obtenerInventario());
+    </script>
+<!-- ESTILOS PARA LA BARRA INFERIOR Y MODAL -->
+<style>
+  body {
+    padding-bottom: 70px; /* Espacio para que el menú no tape el contenido */
+  }
+
+  .nav-inferior-inv {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    background-color: #1e293b;
+    border-top: 1px solid #334155;
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    z-index: 9999;
+    box-shadow: 0 -4px 12px rgba(0,0,0,0.15);
+  }
+
+  .btn-nav-inv {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: bold;
+    cursor: pointer;
+    flex: 1;
+    padding: 6px 2px;
+  }
+
+  .btn-nav-inv:active {
+    transform: scale(0.95);
+  }
+
+  .btn-nav-inv span.icon {
+    font-size: 16px;
+    margin-bottom: 2px;
+  }
+
+  .btn-nav-inv.verde { color: #27ae60; }
+  .btn-nav-inv.azul { color: #3b82f6; }
+  .btn-nav-inv.morado { color: #8b5cf6; }
+  .btn-nav-inv.rojo { color: #ef4444; }
+
+  /* Modal de Reportes */
+  .modal-inv-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+    padding: 15px;
+  }
+
+  .modal-inv-contenido {
+    background: #ffffff;
+    border-radius: 16px;
+    width: 100%;
+    max-width: 380px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+    font-family: sans-serif;
+  }
+
+  .modal-inv-header {
+    background: #1e293b;
+    color: #ffffff;
+    padding: 12px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+    font-weight: bold;
+  }
+
+  .modal-inv-body {
+    padding: 16px;
+    overflow-y: auto;
+    font-size: 13px;
+    color: #334155;
+  }
+
+  .tarjeta-resumen {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 12px;
+    text-align: center;
+    margin-bottom: 10px;
+  }
+
+  .tarjeta-resumen h3 {
+    margin: 4px 0 0 0;
+    font-size: 22px;
+    font-weight: 800;
+  }
+
+  .item-ranking {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    border-bottom: 1px solid #f1f5f9;
+    font-size: 12px;
+  }
+
+  .badge-pos {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 10px;
+    margin-right: 8px;
+  }
+</style>
+
+<!-- NAVEGACIÓN INFERIOR DE INVENTARIO -->
+<nav class="nav-inferior-inv">
+  <button class="btn-nav-inv verde" onclick="reporteMontoTotal()">
+    <span class="icon">💰</span>
+    <span>Monto $</span>
+  </button>
+
+  <button class="btn-nav-inv azul" onclick="reporteProductosTotal()">
+    <span class="icon">📦</span>
+    <span>Piezas</span>
+  </button>
+
+  <button class="btn-nav-inv morado" onclick="reportePorCategorias()">
+    <span class="icon">🏷️</span>
+    <span>Categorías</span>
+  </button>
+
+  <button class="btn-nav-inv verde" onclick="reporteTopVentas('mas')">
+    <span class="icon">🔥</span>
+    <span>Top Más</span>
+  </button>
+
+  <button class="btn-nav-inv rojo" onclick="reporteTopVentas('menos')">
+    <span class="icon">❄️</span>
+    <span>Top Menos</span>
+  </button>
+</nav>
+
+<!-- MODAL CONTENEDOR DE REPORTES -->
+<div id="modalReportesInv" class="modal-inv-overlay">
+  <div class="modal-inv-contenido">
+    <div class="modal-inv-header">
+      <span id="modalInvTitulo">Reporte de Inventario</span>
+      <button onclick="cerrarModalInv()" style="background:none; border:none; color:#fff; font-size:18px; cursor:pointer;">✕</button>
+    </div>
+    <div id="modalInvCuerpo" class="modal-inv-body">
+      <!-- Se carga dinámicamente -->
+    </div>
+  </div>
+</div>
+
+<!-- LÓGICA JAVASCRIPT DE LOS REPORTES -->
+<script>
+  function abrirModalInv(titulo, html) {
+    document.getElementById('modalInvTitulo').innerText = titulo;
+    document.getElementById('modalInvCuerpo').innerHTML = html;
+    document.getElementById('modalReportesInv').style.display = 'flex';
+  }
+
+  function cerrarModalInv() {
+    document.getElementById('modalReportesInv').style.display = 'none';
+  }
+
+  // 1. TOTAL DE INVENTARIO EN MONTO $
+  function reporteMontoTotal() {
+    let productos = obtenerInventario();
+    let totalVenta = 0;
+    let totalCosto = 0;
+
+    productos.forEach(p => {
+      let stock = parseFloat(p.stock) || 0;
+      let precio = p.precio !== undefined ? parseFloat(p.precio) : (p.venta !== undefined ? parseFloat(p.venta) : 0);
+      let costo = parseFloat(p.costo) || 0;
+
+      totalVenta += stock * precio;
+      totalCosto += stock * costo;
+    });
+
+    let gananciaEstimada = totalVenta - totalCosto;
+
+    let html = `
+      <div class="tarjeta-resumen" style="background:#f0fdf4; border-color:#bbf7d0;">
+        <span style="font-size:11px; font-weight:bold; color:#166534;">VALOR TOTAL A LA VENTA</span>
+        <h3 style="color:#15803d;">$${totalVenta.toFixed(2)}</h3>
+      </div>
+
+      <div style="display:flex; gap:8px;">
+        <div class="tarjeta-resumen" style="flex:1;">
+          <span style="font-size:10px; color:#64748b; font-weight:bold;">Costo Invertido</span>
+          <p style="margin:4px 0 0; font-weight:bold; color:#334155;">$${totalCosto.toFixed(2)}</p>
+        </div>
+        <div class="tarjeta-resumen" style="flex:1;">
+          <span style="font-size:10px; color:#64748b; font-weight:bold;">Ganancia Estimada</span>
+          <p style="margin:4px 0 0; font-weight:bold; color:#2563eb;">$${gananciaEstimada.toFixed(2)}</p>
+        </div>
+      </div>
+    `;
+
+    abrirModalInv('💰 Valor del Inventario', html);
+  }
+
+  // 2. TOTAL DE INVENTARIO EN PRODUCTOS (PIEZAS)
+  function reporteProductosTotal() {
+    let productos = obtenerInventario();
+    let totalPiezas = 0;
+
+    productos.forEach(p => {
+      totalPiezas += parseFloat(p.stock) || 0;
+    });
+
+    let html = `
+      <div class="tarjeta-resumen" style="background:#eff6ff; border-color:#bfdbfe;">
+        <span style="font-size:11px; font-weight:bold; color:#1e40af;">TOTAL DE PIEZAS EN STOCK</span>
+        <h3 style="color:#1d4ed8;">${totalPiezas} pzs</h3>
+      </div>
+
+      <div class="tarjeta-resumen">
+        <span style="font-size:11px; color:#64748b; font-weight:bold;">Variedad de Productos</span>
+        <p style="margin:4px 0 0; font-size:16px; font-weight:bold; color:#334155;">${productos.length} registros distintos</p>
+      </div>
+    `;
+
+    abrirModalInv('📦 Total de Productos', html);
+  }
+
+  // 3. TOTAL POR CATEGORÍA (PIEZAS Y MONTO $)
+  function reportePorCategorias() {
+    let productos = obtenerInventario();
+    let categorias = {};
+
+    productos.forEach(p => {
+      let cat = p.categoria || 'General';
+      let stock = parseFloat(p.stock) || 0;
+      let precio = p.precio !== undefined ? parseFloat(p.precio) : (p.venta !== undefined ? parseFloat(p.venta) : 0);
+
+      if (!categorias[cat]) {
+        categorias[cat] = { piezas: 0, monto: 0 };
+      }
+
+      categorias[cat].piezas += stock;
+      categorias[cat].monto += stock * precio;
+    });
+
+    let html = `<p style="font-weight:bold; margin-bottom:10px;">Desglose por Categoría:</p>`;
+
+    Object.keys(categorias).forEach(cat => {
+      html += `
+        <div class="item-ranking">
+          <div>
+            <strong>${cat}</strong>
+            <div style="font-size:11px; color:#64748b;">${categorias[cat].piezas} piezas</div>
+          </div>
+          <span style="font-weight:bold; color:#15803d;">$${categorias[cat].monto.toFixed(2)}</span>
+        </div>
+      `;
+    });
+
+    abrirModalInv('🏷️ Por Categoría', html);
+  }
+
+  // 4 Y 5. TOP 10 MÁS Y MENOS VENDIDOS
+  function reporteTopVentas(tipo) {
+    let productos = obtenerInventario();
+    let ventas = JSON.parse(localStorage.getItem('pos_db_ventas') || '[]');
+
+    let conteoVentas = {};
+
+    // Inicializar con los productos existentes
+    productos.forEach(p => {
+      let key = String(p.codigo || p.id);
+      conteoVentas[key] = { nombre: p.nombre, cantidad: 0 };
+    });
+
+    // Sumar el conteo de ventas guardadas
+    ventas.forEach(v => {
+      if (Array.isArray(v.items)) {
+        v.items.forEach(i => {
+          let key = String(i.codigo || i.id);
+          if (!conteoVentas[key]) {
+            conteoVentas[key] = { nombre: i.nombre || 'Producto', cantidad: 0 };
+          }
+          conteoVentas[key].cantidad += parseFloat(i.cantidad) || 0;
+        });
+      }
+    });
+
+    let lista = Object.values(conteoVentas);
+
+    if (tipo === 'mas') {
+      lista.sort((a, b) => b.cantidad - a.cantidad);
+    } else {
+      lista.sort((a, b) => a.cantidad - b.cantidad);
+    }
+
+    let top10 = lista.slice(0, 10);
+    let titulo = tipo === 'mas' ? '🔥 Top 10 Más Vendidos' : '❄️ Top 10 Menos Vendidos';
+    let bgBadge = tipo === 'mas' ? '#dcfce7' : '#fee2e2';
+    let colorBadge = tipo === 'mas' ? '#15803d' : '#b91c1c';
+
+    let html = '';
+    top10.forEach((item, index) => {
+      html += `
+        <div class="item-ranking">
+          <div style="display:flex; align-items:center;">
+            <span class="badge-pos" style="background:${bgBadge}; color:${colorBadge};">${index + 1}</span>
+            <span style="font-weight:bold;">${item.nombre}</span>
+          </div>
+          <span style="font-weight:bold; color:#334155;">${item.cantidad} sold</span>
+        </div>
+      `;
+    });
+
+    if (top10.length === 0) {
+      html = '<p style="text-align:center; color:#94a3b8; padding:20px 0;">No se registran ventas acumuladas.</p>';
+    }
+
+    abrirModalInv(titulo, html);
+  }
+</script>
+
+</body>
+</html>

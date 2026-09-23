@@ -1,0 +1,1853 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<!-- BLOQUE DE SEGURIDAD PARA BLOQUEAR EL MENÚ HASTA INGRESAR PIN -->
+<div id="modalSeguridadApp" style="position:fixed; top:0; left:0; width:100%; height:100%; background:#0f172a; z-index:999999; display:flex; align-items:center; justify-content:center; font-family:sans-serif;">
+  <div style="background:white; padding:24px; border-radius:16px; width:85%; max-width:300px; text-align:center; box-shadow:0 10px 25px rgba(0,0,0,0.5);">
+    <div style="font-size:32px; margin-bottom:8px;">🔒</div>
+    <h3 style="margin:0 0 6px 0; font-size:16px; color:#1e293b;">Acceso Restringido</h3>
+    <p style="margin:0 0 14px 0; font-size:11px; color:#64748b;">Ingresa tu PIN de Cajero o Administrador para continuar.</p>
+    <input type="password" id="inputPinSeguridad" placeholder="••••" maxlength="6" style="width:100%; padding:12px; font-size:22px; text-align:center; border:1px solid #cbd5e1; border-radius:10px; margin-bottom:12px; box-sizing:border-box; letter-spacing:6px;" />
+    <button onclick="validarPinSecreto()" style="width:100%; background:#059669; color:white; border:none; padding:12px; border-radius:10px; font-weight:bold; font-size:13px; cursor:pointer;">Entrar al Menú</button>
+  </div>
+</div>
+
+<script>
+  // Clave de sesión: identifica qué usuario (cajero o admin)
+  // abrió la Caja. Se guarda en sessionStorage, así que se
+  // olvida automáticamente al cerrar la app/pestaña.
+  const SESION_USUARIO_KEY = 'pos_sesion_usuario';
+
+  window.addEventListener('DOMContentLoaded', () => {
+    verificarEstadoSeguridad();
+  });
+
+  function verificarEstadoSeguridad() {
+    // NUEVO: si ya se identificó un usuario en esta sesión,
+    // no se vuelve a pedir el PIN.
+    if (sessionStorage.getItem(SESION_USUARIO_KEY)) {
+      document.getElementById('modalSeguridadApp').style.display = 'none';
+      return;
+    }
+
+    const datosUsuarios = localStorage.getItem('pos_db_users');
+    if (!datosUsuarios) {
+      document.getElementById('modalSeguridadApp').style.display = 'none';
+      return;
+    }
+
+    try {
+      const usuarios = JSON.parse(datosUsuarios);
+      if (!Array.isArray(usuarios) || usuarios.length === 0) {
+        document.getElementById('modalSeguridadApp').style.display = 'none';
+      } else {
+        document.getElementById('modalSeguridadApp').style.display = 'flex';
+      }
+    } catch (e) {
+      document.getElementById('modalSeguridadApp').style.display = 'none';
+    }
+  }
+
+  function validarPinSecreto() {
+    const pinIngresado = document.getElementById('inputPinSeguridad').value.trim();
+    const datosUsuarios = localStorage.getItem('pos_db_users');
+    
+    if (!datosUsuarios) {
+      document.getElementById('modalSeguridadApp').style.display = 'none';
+      return;
+    }
+
+    let usuarios = [];
+    try {
+      usuarios = JSON.parse(datosUsuarios);
+    } catch (e) {
+      usuarios = [];
+    }
+
+    if (!Array.isArray(usuarios) || usuarios.length === 0) {
+      document.getElementById('modalSeguridadApp').style.display = 'none';
+      return;
+    }
+
+    // Acepta PIN de Cajero o Administrador (ambos pueden abrir Caja)
+    const usuarioValido = usuarios.find(u => String(u.pin) === String(pinIngresado));
+
+    if (usuarioValido) {
+      // NUEVO: se guarda quién entró, para toda la sesión
+      sessionStorage.setItem(SESION_USUARIO_KEY, JSON.stringify({
+        nombre: usuarioValido.nombre,
+        rol: usuarioValido.rol
+      }));
+      document.getElementById('modalSeguridadApp').style.display = 'none';
+    } else {
+      alert("❌ PIN incorrecto. Acceso denegado.");
+      document.getElementById('inputPinSeguridad').value = "";
+    }
+  }
+
+  // NUEVO: nombre del cajero/administrador identificado en esta
+  // sesión, usado para etiquetar cada venta y para el desglose
+  // por cajero del Corte de Caja. 'Sin usuario' cubre el caso de
+  // acceso libre (sin usuarios registrados en el sistema).
+  function obtenerCajeroActual() {
+    const datos = sessionStorage.getItem(SESION_USUARIO_KEY);
+    if (!datos) return 'Sin usuario';
+    try {
+      const usr = JSON.parse(datos);
+      return (usr && usr.nombre) ? usr.nombre : 'Sin usuario';
+    } catch (e) {
+      return 'Sin usuario';
+    }
+  }
+</script>
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Caja - Punto de Venta</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Iconos -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Lector de Código de Barras HTML5 -->
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <!-- NUEVO: para convertir el ticket en imagen y compartirlo con logo incluido -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <style>
+    input, select, textarea { font-size: 16px !important; }
+
+    /* NUEVO: línea roja animada del lector de código de barras */
+    .gp-scanner-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .gp-scanner-line-wrap {
+      position: relative;
+      width: 280px;
+      max-width: 78%;
+      height: 140px;
+    }
+
+    .gp-scanner-line {
+      position: absolute;
+      left: 0;
+      top: 4%;
+      width: 100%;
+      height: 2px;
+      border-radius: 2px;
+      background: #ef4444;
+      box-shadow: 0 0 8px 2px rgba(239, 68, 68, 0.85);
+      animation: gp-scan-move 1.8s ease-in-out infinite;
+    }
+
+    @keyframes gp-scan-move {
+      0%   { top: 4%; }
+      50%  { top: 92%; }
+      100% { top: 4%; }
+    }
+
+    .gp-metodo-pago-btn {
+      background: #ffffff;
+      border-color: #e2e8f0;
+      color: #64748b;
+    }
+
+    .gp-metodo-pago-btn.gp-metodo-activo {
+      background: #ecfdf5;
+      border-color: #10b981;
+      color: #047857;
+    }
+
+    @media print {
+      body * { visibility: hidden; }
+      .gp-print-area, .gp-print-area * { visibility: visible; }
+      .gp-print-area {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        margin: 0;
+        padding: 10px;
+      }
+      .no-print { display: none !important; }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen pb-24">
+
+  <!-- ENCABEZADO Y NAVEGACIÓN -->
+  <header class="bg-slate-900 text-white p-4 sticky top-0 z-30 shadow-md">
+    <div class="max-w-xl mx-auto flex justify-between items-center">
+      <div class="flex items-center gap-2">
+        <i class="fa-solid fa-cash-register text-xl text-emerald-400"></i>
+        <h1 class="font-bold text-lg">Caja / Ventas</h1>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button onclick="abrirConfigTicket()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 p-2 rounded-lg text-xs font-bold shadow flex items-center gap-1 active:scale-95 transition" title="Datos del Negocio">
+          <i class="fa-solid fa-gear text-amber-400 text-base"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-xl mx-auto p-4 space-y-4">
+
+    <!-- BUSCADOR DE PRODUCTOS Y ESCÁNER -->
+    <section class="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+      <label class="block text-xs font-bold text-slate-600">Buscar o Escanear Producto</label>
+      <div class="flex gap-2">
+        <div class="relative flex-1">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-3 text-slate-400"></i>
+          <input type="text" id="inputBuscar" onkeyup="buscarProducto(event)" placeholder="Escribe nombre o código..." 
+                 class="w-full bg-slate-50 border border-slate-300 rounded-xl py-2.5 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+        </div>
+        <button onclick="abrirCamaraScanner()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 rounded-xl flex items-center justify-center active:scale-95 shadow">
+          <i class="fa-solid fa-barcode text-lg"></i>
+        </button>
+      </div>
+
+      <div id="resultadosBusqueda" class="hidden space-y-1 max-h-48 overflow-y-auto border-t pt-2 mt-2"></div>
+    </section>
+
+    <!-- CARRITO DE COMPRA ACTUAL -->
+    <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-3">
+      <div class="flex justify-between items-center border-b pb-2">
+        <h2 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+          <i class="fa-solid fa-cart-shopping text-emerald-600"></i> Ticket de Venta
+        </h2>
+        <button onclick="vaciarCarrito()" class="text-xs text-red-500 hover:underline font-semibold">
+          Vaciar Ticket
+        </button>
+      </div>
+
+      <div id="listaCarrito" class="space-y-2 min-h-[120px] max-h-60 overflow-y-auto pr-1">
+        <div id="carritoVacioMsg" class="text-center py-8 text-slate-400 text-xs">
+          <i class="fa-solid fa-cart-flatbed text-3xl mb-1 block"></i>
+          No hay productos en la cuenta. Busca o escanea un producto arriba.
+        </div>
+      </div>
+
+      <div class="border-t pt-3 space-y-2 bg-slate-50 -mx-4 -mb-4 p-4 rounded-b-2xl">
+        <div class="flex justify-between items-center text-sm">
+          <span class="text-slate-600 font-medium">Subtotal</span>
+          <span id="txtSubtotal" class="font-bold text-slate-800">$0.00</span>
+        </div>
+
+        <div class="flex items-center justify-between gap-2 border-t border-slate-200 pt-2 text-xs">
+          <label class="font-bold text-slate-600 flex items-center gap-1">
+            <i class="fa-solid fa-tag text-amber-500"></i> Descuento
+          </label>
+          <div class="flex items-center gap-1">
+            <select id="tipoDescuento" onchange="calcularTotales()" class="bg-white border border-slate-300 rounded-lg p-1 text-xs font-bold text-slate-700 focus:ring-1 focus:ring-emerald-500">
+              <option value="monto">$</option>
+              <option value="porcentaje">%</option>
+            </select>
+            <input type="number" step="any" min="0" id="inputDescuento" oninput="calcularTotales()" placeholder="0"
+                   class="w-20 bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-bold text-slate-800 text-right focus:ring-2 focus:ring-emerald-500">
+          </div>
+        </div>
+
+        <div id="rowDescuentoCalculado" class="flex justify-between items-center text-xs text-amber-600 font-bold hidden">
+          <span>Descuento Aplicado:</span>
+          <span id="txtDescuentoMonto">-$0.00</span>
+        </div>
+
+        <div class="flex justify-between items-center text-lg font-black text-slate-900 border-t border-slate-200 pt-2">
+          <span>TOTAL A COBRAR</span>
+          <span id="txtTotal" class="text-emerald-600 text-xl">$0.00</span>
+        </div>
+
+        <div class="border-t border-slate-200 pt-2">
+          <label class="block text-[11px] font-bold text-slate-500 mb-1.5">Método de pago</label>
+          <div class="grid grid-cols-4 gap-1.5" id="gridMetodoPago">
+            <button type="button" onclick="seleccionarMetodoPago('efectivo')" id="btnMetodoEfectivo"
+                    class="gp-metodo-pago-btn flex flex-col items-center justify-center gap-1 py-2 rounded-xl border-2 text-[10px] font-bold transition active:scale-95">
+              <i class="fa-solid fa-money-bill-wave text-sm"></i>
+              <span>Efectivo</span>
+            </button>
+            <button type="button" onclick="seleccionarMetodoPago('debito')" id="btnMetodoDebito"
+                    class="gp-metodo-pago-btn flex flex-col items-center justify-center gap-1 py-2 rounded-xl border-2 text-[10px] font-bold transition active:scale-95">
+              <i class="fa-solid fa-credit-card text-sm"></i>
+              <span>Débito</span>
+            </button>
+            <button type="button" onclick="seleccionarMetodoPago('credito')" id="btnMetodoCredito"
+                    class="gp-metodo-pago-btn flex flex-col items-center justify-center gap-1 py-2 rounded-xl border-2 text-[10px] font-bold transition active:scale-95">
+              <i class="fa-solid fa-credit-card text-sm"></i>
+              <span>Crédito</span>
+            </button>
+            <button type="button" onclick="seleccionarMetodoPago('vales')" id="btnMetodoVales"
+                    class="gp-metodo-pago-btn flex flex-col items-center justify-center gap-1 py-2 rounded-xl border-2 text-[10px] font-bold transition active:scale-95">
+              <i class="fa-solid fa-ticket text-sm"></i>
+              <span>Vales</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="bloquePagaConCambio" class="grid grid-cols-2 gap-2 pt-1">
+          <div>
+            <label class="block text-[11px] font-bold text-slate-500">Paga con ($)</label>
+            <input type="number" step="any" id="inputPagaCon" oninput="calcularCambio()" placeholder="0.00"
+                   class="w-full bg-white border border-slate-300 rounded-lg p-2 text-sm font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500">
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-slate-500">Cambio ($)</label>
+            <div id="txtCambio" class="w-full bg-slate-200 border border-slate-300 rounded-lg p-2 text-sm font-black text-slate-700">
+              $0.00
+            </div>
+          </div>
+        </div>
+
+        <div id="bloquePagoSinCambio" class="hidden pt-1">
+          <div class="bg-blue-50 border border-blue-200 rounded-lg p-2 text-[11px] text-blue-700 font-semibold text-center">
+            <i class="fa-solid fa-circle-info"></i>
+            Se registrará el pago exacto con <span id="txtMetodoPagoSeleccionadoLabel">Tarjeta</span>. No aplica cambio.
+          </div>
+        </div>
+
+        <button onclick="procesarCobro()" id="btnCobrar" disabled 
+                class="w-full bg-slate-300 text-slate-500 font-bold py-3 rounded-xl shadow transition flex items-center justify-center gap-2 mt-2">
+          <i class="fa-solid fa-check-circle"></i>
+          <span>COBRAR $0.00</span>
+        </button>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MODAL DE CONFIGURACIÓN DEL NEGOCIO / TICKET -->
+  <div id="configModal" class="fixed inset-0 bg-black/80 z-50 hidden flex-col items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-white rounded-2xl p-4 w-full max-w-sm text-left relative shadow-xl space-y-3 my-auto">
+      <div class="flex justify-between items-center border-b pb-2">
+        <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+          <i class="fa-solid fa-store text-amber-500"></i> Datos del Negocio para Ticket
+        </h3>
+        <button onclick="cerrarConfigTicket()" class="text-slate-400 hover:text-slate-600">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <form onsubmit="guardarConfigTicket(event)" class="space-y-2.5 text-xs">
+        <div>
+          <label class="block font-bold text-slate-600 mb-1">Logo del Negocio</label>
+          <div class="flex items-center gap-3">
+            <div id="logoPreviewContainer" class="w-12 h-12 bg-slate-100 rounded-lg border flex items-center justify-center overflow-hidden">
+              <i id="logoPlaceholder" class="fa-solid fa-shop text-slate-400 text-lg"></i>
+              <img id="logoPreview" src="" class="hidden w-full h-full object-cover">
+            </div>
+            <div class="flex-1 space-y-1">
+              <button type="button" onclick="document.getElementById('inputLogo').click()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg border text-xs font-semibold w-full">
+                Subir Logo
+              </button>
+              <input type="file" id="inputLogo" accept="image/*" onchange="procesarLogoTicket(event)" class="hidden">
+              <button type="button" onclick="quitarLogoConfig()" id="btnQuitarLogo" class="hidden text-red-500 hover:underline text-[10px]">
+                Eliminar logo
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-600 mb-0.5">Nombre del Negocio</label>
+          <input type="text" id="cfgNombre" placeholder="Ej. Mi Abarrotes / Novedades" class="w-full bg-slate-50 border rounded-lg p-2">
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-600 mb-0.5">Dirección</label>
+          <input type="text" id="cfgDireccion" placeholder="Calle, Número, Colonia" class="w-full bg-slate-50 border rounded-lg p-2">
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block font-bold text-slate-600 mb-0.5">Teléfono</label>
+            <input type="text" id="cfgTelefono" placeholder="5512345678" class="w-full bg-slate-50 border rounded-lg p-2">
+          </div>
+          <div>
+            <label class="block font-bold text-slate-600 mb-0.5">RFC / Identificación</label>
+            <input type="text" id="cfgRFC" placeholder="XAXX010101000" class="w-full bg-slate-50 border rounded-lg p-2">
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-600 mb-0.5">Mensaje de Agradecimiento</label>
+          <input type="text" id="cfgMensaje" placeholder="¡Gracias por su compra!" class="w-full bg-slate-50 border rounded-lg p-2">
+        </div>
+
+        <div class="flex gap-2 pt-2">
+          <button type="button" onclick="cerrarConfigTicket()" class="w-1/3 bg-slate-200 text-slate-700 py-2 rounded-xl font-bold">Cancelar</button>
+          <button type="submit" class="w-2/3 bg-amber-500 hover:bg-amber-600 text-white py-2 rounded-xl font-bold shadow">Guardar Datos</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL DE VISUALIZACIÓN Y ACCIONES DE TICKET -->
+  <div id="modalTicket" class="fixed inset-0 bg-black/85 z-50 hidden flex-col items-center justify-center p-3 overflow-y-auto">
+    <div class="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+      
+      <div class="bg-slate-900 text-white p-3 flex justify-between items-center no-print">
+        <h3 class="font-bold text-xs flex items-center gap-1.5">
+          <i class="fa-solid fa-receipt text-emerald-400"></i> Ticket de Venta
+        </h3>
+        <button onclick="cerrarTicketModal()" class="text-slate-400 hover:text-white">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div class="p-4 overflow-y-auto font-mono text-xs text-slate-800 space-y-3 gp-print-area" id="ticketPrintArea">
+        <div class="text-center space-y-1 border-b border-dashed border-slate-300 pb-3">
+          <img id="tkLogo" src="" class="hidden mx-auto h-12 object-contain mb-1">
+          <h2 id="tkNombre" class="font-black text-sm uppercase text-slate-900">MI NEGOCIO</h2>
+          <p id="tkDireccion" class="text-[11px] text-slate-600">Dirección registrada</p>
+          <p id="tkTelefono" class="text-[11px] text-slate-600">Tel: 0000000000</p>
+          <p id="tkRFC" class="text-[10px] text-slate-500">RFC: XAXX010101000</p>
+        </div>
+
+        <div class="text-[11px] space-y-0.5 border-b border-dashed border-slate-300 pb-2">
+          <div class="flex justify-between">
+            <span>Ticket:</span>
+            <strong id="tkId">#000000</strong>
+          </div>
+          <div class="flex justify-between">
+            <span>Fecha:</span>
+            <span id="tkFecha">00/00/0000 00:00</span>
+          </div>
+        </div>
+
+        <div class="space-y-1 border-b border-dashed border-slate-300 pb-3">
+          <div class="flex justify-between font-bold text-[11px] text-slate-900 border-b border-slate-200 pb-1">
+            <span>Cant. Concepto</span>
+            <span>Importe</span>
+          </div>
+          <div id="tkItems" class="space-y-1 text-[11px]"></div>
+        </div>
+
+        <div class="space-y-1 text-xs border-b border-dashed border-slate-300 pb-3">
+          <div id="tkSubtotalRow" class="flex justify-between text-slate-600 hidden">
+            <span>Subtotal:</span>
+            <span id="tkSubtotal">$0.00</span>
+          </div>
+          <div id="tkDescuentoRow" class="flex justify-between text-amber-600 font-bold hidden">
+            <span>Descuento:</span>
+            <span id="tkDescuento">-$0.00</span>
+          </div>
+          <div class="flex justify-between font-black text-sm text-slate-900 pt-1">
+            <span>TOTAL:</span>
+            <span id="tkTotal">$0.00</span>
+          </div>
+          <div class="flex justify-between text-slate-700 font-bold">
+            <span>Método de pago:</span>
+            <span id="tkMetodoPago">Efectivo</span>
+          </div>
+          <div class="flex justify-between text-slate-500">
+            <span>Atendió:</span>
+            <span id="tkCajero">-</span>
+          </div>
+          <div id="tkPagaConRow" class="flex justify-between text-slate-600">
+            <span>Pagó con:</span>
+            <span id="tkPagaCon">$0.00</span>
+          </div>
+          <div id="tkCambioRow" class="flex justify-between text-slate-600">
+            <span>Cambio:</span>
+            <span id="tkCambio">$0.00</span>
+          </div>
+        </div>
+
+        <div class="text-center pt-1">
+          <p id="tkMensaje" class="font-bold text-[11px]">¡Gracias por su compra!</p>
+          <p class="text-[9px] text-slate-400 mt-1">Punto de Venta Móvil</p>
+        </div>
+      </div>
+
+      <div class="p-3 bg-slate-50 border-t flex gap-2 no-print">
+        <button onclick="compartirTicketWhatsApp()" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow active:scale-95 transition">
+          <i class="fa-brands fa-whatsapp text-sm"></i>
+          <span>WhatsApp</span>
+        </button>
+        <button onclick="imprimirTicket()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow active:scale-95 transition">
+          <i class="fa-solid fa-print text-sm"></i>
+          <span>Imprimir</span>
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- MODAL ESCÁNER CÓDIGO DE BARRAS -->
+  <div id="scannerModal" class="fixed inset-0 bg-black/80 z-50 hidden flex-col items-center justify-center p-4">
+    <div class="bg-white rounded-2xl p-4 w-full max-w-sm text-center relative shadow-xl">
+      <h3 class="font-bold text-slate-800 mb-2 text-sm">Escanea el código del producto</h3>
+      <div class="relative w-full rounded-lg overflow-hidden bg-black">
+        <div id="reader" class="w-full"></div>
+        <div class="gp-scanner-overlay">
+          <div class="gp-scanner-line-wrap">
+            <div class="gp-scanner-line"></div>
+          </div>
+        </div>
+      </div>
+      <p class="text-[11px] text-slate-500 mt-2">Coloca el código de barras dentro del recuadro</p>
+      <button onclick="cerrarCamaraScanner()" class="mt-3 bg-slate-200 text-slate-700 w-full py-2.5 rounded-xl font-bold text-xs">
+        Cancelar / Cerrar
+      </button>
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT Y LÓGICA COMPLETA DE CAJA -->
+  <script>
+    const DB_KEY = 'pos_db_products';
+    const DB_VENTAS_KEY = 'pos_db_ventas';
+    const DB_TICKET_CFG = 'pos_db_ticket_config';
+    const DB_KARDEX_KEY = 'pos_db_kardex';
+
+/* =====================================================
+   NUEVO
+   DEPURACIÓN TRIMESTRAL DE VENTAS Y GASTOS
+
+   Cada 3 meses (a partir del registro más antiguo de cada
+   tipo), se avisa 7 días antes, se recuerda 3 días después
+   de ese primer aviso, y a los 7 días del primer aviso se
+   elimina SOLO lo que ya tiene más de 3 meses de antigüedad
+   (lo reciente se conserva). El Kárdex no se toca.
+
+   Este bloque es idéntico en Caja, Gestión de Gastos y
+   Respaldo y Restauración — es el único lugar donde puede
+   "revisarse" el ciclo, ya que no existe un proceso en
+   segundo plano real (cada módulo es independiente).
+===================================================== */
+
+const GP_DEPURACION_MESES = 3;
+const GP_DEPURACION_AVISO_DIAS = 7;
+const GP_DEPURACION_SEGUNDO_AVISO_DIAS = 4; // 3 días después del primer aviso
+
+function gpDepuracionSumarMeses(fechaISO, meses) {
+  const f = new Date(fechaISO);
+  f.setMonth(f.getMonth() + meses);
+  return f.toISOString();
+}
+
+function gpDepuracionObtenerEstado(claveEstado) {
+  const data = localStorage.getItem(claveEstado);
+  if (!data) return null;
+  try {
+    return JSON.parse(data);
+  } catch (e) {
+    return null;
+  }
+}
+
+function gpDepuracionGuardarEstado(claveEstado, estado) {
+  localStorage.setItem(claveEstado, JSON.stringify(estado));
+}
+
+function gpDepuracionContenedorAvisos() {
+  let cont = document.getElementById('gpContenedorAvisosDepuracion');
+  if (!cont) {
+    cont = document.createElement('div');
+    cont.id = 'gpContenedorAvisosDepuracion';
+    cont.style.cssText = 'position:fixed; top:0; left:0; right:0; z-index:999998; display:flex; flex-direction:column; gap:6px; padding:8px; pointer-events:none;';
+    document.body.appendChild(cont);
+  }
+  return cont;
+}
+
+function gpDepuracionMostrarAviso(mensaje, color) {
+  const cont = gpDepuracionContenedorAvisos();
+  const aviso = document.createElement('div');
+  aviso.style.cssText = `background:${color}; color:#fff; font-family:sans-serif; font-size:12px; font-weight:bold; line-height:1.4; padding:10px 12px; border-radius:10px; box-shadow:0 4px 10px rgba(0,0,0,.25); pointer-events:auto; display:flex; justify-content:space-between; align-items:flex-start; gap:10px; max-width:480px; margin:0 auto; width:100%; box-sizing:border-box;`;
+  aviso.innerHTML = `<span>${mensaje}</span><button style="background:rgba(255,255,255,.25); border:none; color:#fff; border-radius:6px; padding:4px 8px; font-weight:bold; cursor:pointer; flex-shrink:0;" onclick="this.parentElement.remove()">✕</button>`;
+  cont.appendChild(aviso);
+}
+
+// tipo: 'ventas' | 'gastos'
+// claveDatos: clave en localStorage donde viven los registros
+// campoFecha: nombre del campo de fecha dentro de cada registro
+function gpVerificarDepuracion(tipo, claveDatos, campoFecha) {
+  const claveEstado = 'pos_depuracion_' + tipo;
+  let estado = gpDepuracionObtenerEstado(claveEstado);
+
+  const datosCrudos = localStorage.getItem(claveDatos);
+  let registros = [];
+  try {
+    registros = datosCrudos ? JSON.parse(datosCrudos) : [];
+  } catch (e) {
+    registros = [];
+  }
+
+  if (!Array.isArray(registros) || registros.length === 0) {
+    return; // sin datos todavía, sin ciclo que revisar
+  }
+
+  const etiqueta = tipo === 'ventas' ? 'ventas' : 'gastos';
+
+  if (!estado || !estado.fechaAncla) {
+    // Primer ciclo: se ancla a la fecha del registro más antiguo existente
+    const fechas = registros.map(r => r[campoFecha]).filter(Boolean).sort();
+    const fechaAncla = fechas[0] || new Date().toISOString();
+    estado = {
+      fechaAncla: fechaAncla,
+      proximoCorte: gpDepuracionSumarMeses(fechaAncla, GP_DEPURACION_MESES),
+      aviso7Mostrado: false,
+      aviso3Mostrado: false
+    };
+    gpDepuracionGuardarEstado(claveEstado, estado);
+  }
+
+  const ahora = new Date();
+  const proximoCorte = new Date(estado.proximoCorte);
+  const msPorDia = 24 * 60 * 60 * 1000;
+  const diasParaCorte = (proximoCorte - ahora) / msPorDia;
+  const fechaCorteTexto = proximoCorte.toLocaleDateString();
+
+  if (diasParaCorte <= 0) {
+    // Ejecutar depuración: eliminar solo lo que ya tiene más de 3 meses
+    const limite = new Date(ahora);
+    limite.setMonth(limite.getMonth() - GP_DEPURACION_MESES);
+
+    const registrosConservados = registros.filter(r => {
+      const f = r[campoFecha] ? new Date(r[campoFecha]) : null;
+      return !f || isNaN(f.getTime()) || f >= limite; // sin fecha válida = se conserva por seguridad
+    });
+
+    const totalEliminados = registros.length - registrosConservados.length;
+    localStorage.setItem(claveDatos, JSON.stringify(registrosConservados));
+
+    estado.proximoCorte = gpDepuracionSumarMeses(estado.proximoCorte, GP_DEPURACION_MESES);
+    estado.aviso7Mostrado = false;
+    estado.aviso3Mostrado = false;
+    gpDepuracionGuardarEstado(claveEstado, estado);
+
+    if (totalEliminados > 0) {
+      gpDepuracionMostrarAviso(
+        `🧹 Depuración automática: se eliminaron ${totalEliminados} registro(s) de ${etiqueta} con más de 3 meses de antigüedad. Tu información reciente sigue intacta.`,
+        '#475569'
+      );
+    }
+    return;
+  }
+
+  if (diasParaCorte <= GP_DEPURACION_AVISO_DIAS && !estado.aviso7Mostrado) {
+    estado.aviso7Mostrado = true;
+    gpDepuracionGuardarEstado(claveEstado, estado);
+    gpDepuracionMostrarAviso(
+      `⚠️ Aviso: el ${fechaCorteTexto} se eliminará automáticamente la información de ${etiqueta} con más de 3 meses de antigüedad, para mantener el sistema saludable. Genera un respaldo desde "Respaldo y Restauración" si quieres conservarla.`,
+      '#d97706'
+    );
+    return;
+  }
+
+  if (diasParaCorte <= GP_DEPURACION_SEGUNDO_AVISO_DIAS && estado.aviso7Mostrado && !estado.aviso3Mostrado) {
+    estado.aviso3Mostrado = true;
+    gpDepuracionGuardarEstado(claveEstado, estado);
+    gpDepuracionMostrarAviso(
+      `⏰ Recordatorio: el ${fechaCorteTexto} se eliminará la información de ${etiqueta} con más de 3 meses de antigüedad. ¿Ya generaste tu respaldo?`,
+      '#dc2626'
+    );
+    return;
+  }
+}
+
+function gpDepuracionRevisarTodo() {
+  gpVerificarDepuracion('ventas', 'pos_db_ventas', 'fechaISO');
+  gpVerificarDepuracion('gastos', 'gastosProveedores', 'fechaRegistro');
+}
+
+
+
+    let productos = [];
+    let carrito = [];
+    let html5QrcodeScanner = null;
+    let ultimaVentaGenerada = null;
+
+    let metodoPagoActual = 'efectivo';
+
+    // NUEVO: registra un movimiento en el kárdex compartido
+    function registrarMovimientoKardex(mov) {
+      try {
+        const historial = JSON.parse(localStorage.getItem(DB_KARDEX_KEY) || '[]');
+        historial.unshift({
+          id: Date.now() + '_' + Math.random().toString(36).substring(2, 8),
+          fecha: new Date().toISOString(),
+          ...mov
+        });
+        localStorage.setItem(DB_KARDEX_KEY, JSON.stringify(historial));
+      } catch (e) {}
+    }
+
+    const METODOS_PAGO = {
+      efectivo: { texto: 'Efectivo', icono: 'fa-money-bill-wave' },
+      debito:   { texto: 'Tarjeta de débito', icono: 'fa-credit-card' },
+      credito:  { texto: 'Tarjeta de crédito', icono: 'fa-credit-card' },
+      vales:    { texto: 'Vales', icono: 'fa-ticket' }
+    };
+
+    document.addEventListener("DOMContentLoaded", () => {
+      cargarInventario();
+      cargarConfigTicket();
+      seleccionarMetodoPago('efectivo');
+      gpDepuracionRevisarTodo();
+    });
+
+    function seleccionarMetodoPago(metodo) {
+      if (!METODOS_PAGO[metodo]) return;
+
+      metodoPagoActual = metodo;
+
+      document.querySelectorAll('.gp-metodo-pago-btn').forEach(btn => {
+        btn.classList.remove('gp-metodo-activo');
+      });
+
+      const idsPorMetodo = {
+        efectivo: 'btnMetodoEfectivo',
+        debito: 'btnMetodoDebito',
+        credito: 'btnMetodoCredito',
+        vales: 'btnMetodoVales'
+      };
+
+      const btnActivo = document.getElementById(idsPorMetodo[metodo]);
+      if (btnActivo) btnActivo.classList.add('gp-metodo-activo');
+
+      const bloquePagaCon = document.getElementById('bloquePagaConCambio');
+      const bloqueSinCambio = document.getElementById('bloquePagoSinCambio');
+
+      if (metodo === 'efectivo') {
+        bloquePagaCon.classList.remove('hidden');
+        bloquePagaCon.classList.add('grid');
+        bloqueSinCambio.classList.add('hidden');
+      } else {
+        bloquePagaCon.classList.add('hidden');
+        bloquePagaCon.classList.remove('grid');
+        bloqueSinCambio.classList.remove('hidden');
+        document.getElementById('txtMetodoPagoSeleccionadoLabel').innerText = METODOS_PAGO[metodo].texto;
+      }
+
+      calcularCambio();
+    }
+
+    function cargarInventario() {
+      const data = localStorage.getItem(DB_KEY);
+      productos = data ? JSON.parse(data) : [];
+    }
+
+    function buscarProducto(e) {
+      const query = document.getElementById('inputBuscar').value.trim().toLowerCase();
+      const contenedorResultados = document.getElementById('resultadosBusqueda');
+
+      if (!query) {
+        contenedorResultados.classList.add('hidden');
+        contenedorResultados.innerHTML = '';
+        return;
+      }
+
+      if (e && e.key === 'Enter') {
+        const coincidenciaExacta = productos.find(p => String(p.codigo).toLowerCase() === query && p.activo !== false);
+        if (coincidenciaExacta) {
+          agregarAlCarrito(coincidenciaExacta.id);
+          document.getElementById('inputBuscar').value = '';
+          contenedorResultados.classList.add('hidden');
+          return;
+        }
+      }
+
+      const filtrados = productos.filter(p => 
+        p.activo !== false &&
+        (String(p.nombre).toLowerCase().includes(query) || 
+        String(p.codigo).toLowerCase().includes(query))
+      );
+
+      if (filtrados.length === 0) {
+        contenedorResultados.innerHTML = `<p class="text-xs text-slate-400 p-2 text-center">No se encontraron coincidencias</p>`;
+        contenedorResultados.classList.remove('hidden');
+        return;
+      }
+
+      contenedorResultados.innerHTML = '';
+      filtrados.forEach(prod => {
+        const item = document.createElement('div');
+        item.className = "flex justify-between items-center p-2 hover:bg-slate-50 border-b border-slate-100 cursor-pointer rounded-lg transition active:bg-emerald-50";
+        item.onclick = () => {
+          agregarAlCarrito(prod.id);
+          document.getElementById('inputBuscar').value = '';
+          contenedorResultados.classList.add('hidden');
+        };
+
+        const unidad = prod.unidad || 'pz';
+        item.innerHTML = `
+          <div class="min-w-0 flex-1">
+            <p class="text-xs font-bold text-slate-800 truncate">${prod.nombre}</p>
+            <p class="text-[10px] text-slate-400">Cod: ${prod.codigo} | Stock: ${prod.stock} ${unidad}</p>
+          </div>
+          <div class="text-right flex items-center gap-2 ml-2">
+            <span class="text-xs font-bold text-emerald-600">$${parseFloat(prod.precio).toFixed(2)}</span>
+            <button class="bg-emerald-600 text-white text-[10px] font-bold px-2 py-1 rounded-lg">
+              + Agregar
+            </button>
+          </div>
+        `;
+        contenedorResultados.appendChild(item);
+      });
+
+      contenedorResultados.classList.remove('hidden');
+    }
+
+    function agregarAlCarrito(prodId) {
+      cargarInventario();
+      const producto = productos.find(p => String(p.id) === String(prodId));
+
+      if (!producto) {
+        alert("⚠️ Error: El producto no fue encontrado.");
+        return;
+      }
+
+      const itemExistente = carrito.find(item => String(item.id) === String(prodId));
+      const pasoCantidad = (producto.unidad === 'kg' || producto.unidad === 'g' || producto.unidad === 'L' || producto.unidad === 'm') ? 0.5 : 1;
+
+      if (itemExistente) {
+        if (itemExistente.cantidad + pasoCantidad > parseFloat(producto.stock)) {
+          alert(`⚠️ Stock insuficiente. Solo quedan ${producto.stock} ${producto.unidad || 'pz'}.`);
+          return;
+        }
+        itemExistente.cantidad += pasoCantidad;
+      } else {
+        if (parseFloat(producto.stock) <= 0) {
+          alert(`⚠️ Producto agotado.`);
+          return;
+        }
+
+        carrito.push({
+          id: producto.id,
+          nombre: producto.nombre,
+          precio: parseFloat(producto.precio),
+          cantidad: pasoCantidad,
+          unidad: producto.unidad || 'pz',
+          stockMax: parseFloat(producto.stock)
+        });
+      }
+
+      renderizarCarrito();
+    }
+
+    function cambiarCantidad(prodId, nuevaCantidad) {
+      const item = carrito.find(i => String(i.id) === String(prodId));
+      if (!item) return;
+
+      const cantidadNum = parseFloat(nuevaCantidad);
+
+      if (isNaN(cantidadNum) || cantidadNum <= 0) {
+        eliminarDelCarrito(prodId);
+        return;
+      }
+
+      if (cantidadNum > item.stockMax) {
+        alert(`⚠️ Stock máximo alcanzado (${item.stockMax} ${item.unidad})`);
+        item.cantidad = item.stockMax;
+      } else {
+        item.cantidad = cantidadNum;
+      }
+
+      renderizarCarrito();
+    }
+
+    function eliminarDelCarrito(prodId) {
+      carrito = carrito.filter(i => String(i.id) !== String(prodId));
+      renderizarCarrito();
+    }
+
+    function vaciarCarrito() {
+      if (carrito.length === 0) return;
+      if (confirm("¿Deseas vaciar el ticket actual?")) {
+        carrito = [];
+        document.getElementById('inputDescuento').value = '';
+        renderizarCarrito();
+      }
+    }
+
+    function renderizarCarrito() {
+      const listEl = document.getElementById('listaCarrito');
+
+      if (carrito.length === 0) {
+        listEl.innerHTML = `
+          <div id="carritoVacioMsg" class="text-center py-8 text-slate-400 text-xs">
+            <i class="fa-solid fa-cart-flatbed text-3xl mb-1 block"></i>
+            No hay productos en la cuenta. Busca o escanea un producto arriba.
+          </div>
+        `;
+        calcularTotales();
+        return;
+      }
+
+      listEl.innerHTML = '';
+
+      carrito.forEach(item => {
+        const subtotalItem = item.precio * item.cantidad;
+        const row = document.createElement('div');
+        row.className = "flex items-center justify-between border-b border-slate-100 pb-2 pt-1 gap-2";
+        const esDecimal = (item.unidad === 'kg' || item.unidad === 'g' || item.unidad === 'L' || item.unidad === 'm');
+
+        row.innerHTML = `
+          <div class="min-w-0 flex-1">
+            <p class="text-xs font-bold text-slate-800 truncate">${item.nombre}</p>
+            <p class="text-[10px] text-slate-400">$${item.precio.toFixed(2)} / ${item.unidad}</p>
+          </div>
+
+          <div class="flex items-center gap-1">
+            <button onclick="cambiarCantidad(${item.id}, ${item.cantidad - (esDecimal ? 0.5 : 1)})" 
+                    class="w-6 h-6 bg-slate-200 text-slate-700 font-bold rounded flex items-center justify-center text-xs active:scale-90">-</button>
+            <input type="number" step="${esDecimal ? '0.01' : '1'}" value="${item.cantidad}" 
+                   onchange="cambiarCantidad(${item.id}, this.value)"
+                   class="w-12 text-center text-xs font-bold bg-slate-50 border border-slate-300 rounded p-1">
+            <button onclick="cambiarCantidad(${item.id}, ${item.cantidad + (esDecimal ? 0.5 : 1)})" 
+                    class="w-6 h-6 bg-slate-200 text-slate-700 font-bold rounded flex items-center justify-center text-xs active:scale-90">+</button>
+          </div>
+
+          <div class="text-right min-w-[60px]">
+            <span class="text-xs font-bold text-slate-800 block">$${subtotalItem.toFixed(2)}</span>
+            <button onclick="eliminarDelCarrito(${item.id})" class="text-[10px] text-red-500 hover:underline">Quitar</button>
+          </div>
+        `;
+        listEl.appendChild(row);
+      });
+
+      calcularTotales();
+    }
+
+    function calcularTotales() {
+      let subtotalTotal = 0;
+      carrito.forEach(item => {
+        subtotalTotal += item.precio * item.cantidad;
+      });
+
+      document.getElementById('txtSubtotal').innerText = `$${subtotalTotal.toFixed(2)}`;
+
+      const tipoDesc = document.getElementById('tipoDescuento').value;
+      const valDesc = parseFloat(document.getElementById('inputDescuento').value) || 0;
+      let montoDesc = 0;
+
+      if (valDesc > 0 && subtotalTotal > 0) {
+        if (tipoDesc === 'porcentaje') {
+          montoDesc = subtotalTotal * (valDesc / 100);
+        } else {
+          montoDesc = valDesc;
+        }
+        montoDesc = Math.min(subtotalTotal, Math.max(0, montoDesc));
+      }
+
+      const rowDesc = document.getElementById('rowDescuentoCalculado');
+      if (montoDesc > 0) {
+        rowDesc.classList.remove('hidden');
+        document.getElementById('txtDescuentoMonto').innerText = `-$${montoDesc.toFixed(2)}`;
+      } else {
+        rowDesc.classList.add('hidden');
+      }
+
+      const totalFinal = Math.max(0, subtotalTotal - montoDesc);
+      document.getElementById('txtTotal').innerText = `$${totalFinal.toFixed(2)}`;
+
+      const btnCobrar = document.getElementById('btnCobrar');
+
+      if (subtotalTotal > 0) {
+        btnCobrar.disabled = false;
+        btnCobrar.className = "w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-md active:scale-98 transition flex items-center justify-center gap-2 mt-2";
+        btnCobrar.innerHTML = `<i class="fa-solid fa-check-circle"></i> COBRAR $${totalFinal.toFixed(2)}`;
+      } else {
+        btnCobrar.disabled = true;
+        btnCobrar.className = "w-full bg-slate-300 text-slate-500 font-bold py-3 rounded-xl shadow transition flex items-center justify-center gap-2 mt-2";
+        btnCobrar.innerHTML = `<i class="fa-solid fa-check-circle"></i> COBRAR $0.00`;
+      }
+
+      calcularCambio();
+    }
+
+    function calcularCambio() {
+      const totalText = document.getElementById('txtTotal').innerText.replace('$', '');
+      const total = parseFloat(totalText) || 0;
+      const pagaCon = parseFloat(document.getElementById('inputPagaCon').value) || 0;
+      const txtCambio = document.getElementById('txtCambio');
+
+      if (pagaCon >= total && total > 0) {
+        const cambio = pagaCon - total;
+        txtCambio.innerText = `$${cambio.toFixed(2)}`;
+        txtCambio.className = "w-full bg-emerald-100 border border-emerald-300 rounded-lg p-2 text-sm font-black text-emerald-800";
+      } else {
+        txtCambio.innerText = "$0.00";
+        txtCambio.className = "w-full bg-slate-200 border border-slate-300 rounded-lg p-2 text-sm font-black text-slate-700";
+      }
+    }
+
+    // PROCESAR COBRO Y GENERACIÓN DE TICKET (Función Corregida)
+    function procesarCobro() {
+      if (carrito.length === 0) return;
+
+      const subtotal = parseFloat(document.getElementById('txtSubtotal').innerText.replace('$', '')) || 0;
+      const total = parseFloat(document.getElementById('txtTotal').innerText.replace('$', '')) || 0;
+      const descuentoText = document.getElementById('txtDescuentoMonto').innerText.replace('-$', '').replace('$', '');
+      const descuento = document.getElementById('rowDescuentoCalculado').classList.contains('hidden') ? 0 : (parseFloat(descuentoText) || 0);
+
+      const pagaCon = metodoPagoActual === 'efectivo'
+        ? (parseFloat(document.getElementById('inputPagaCon').value) || total)
+        : total;
+      const cambio = metodoPagoActual === 'efectivo'
+        ? Math.max(0, pagaCon - total)
+        : 0;
+
+      const metodoPagoInfo = METODOS_PAGO[metodoPagoActual] || METODOS_PAGO.efectivo;
+
+      // 1. Descontar Stock
+      cargarInventario();
+      carrito.forEach(item => {
+        const index = productos.findIndex(p => String(p.id) === String(item.id));
+        if (index !== -1) {
+          productos[index].stock = Math.max(0, parseFloat(productos[index].stock) - item.cantidad);
+        }
+      });
+      localStorage.setItem(DB_KEY, JSON.stringify(productos));
+
+      // 2. Registrar Venta (datos completos sincronizados para REPORTES)
+      const ahora = new Date();
+      const nuevaVenta = {
+        id: "T-" + Math.floor(100000 + Math.random() * 900000),
+        fecha: ahora.toLocaleString(),
+        fechaISO: ahora.toISOString(),
+        dia: ahora.getDate(),
+        mes: ahora.getMonth() + 1,
+        anio: ahora.getFullYear(),
+        subtotal: subtotal,
+        descuento: descuento,
+        total: total,
+        pagaCon: pagaCon,
+        cambio: cambio,
+        metodoPago: metodoPagoActual,
+        metodoPagoTexto: metodoPagoInfo.texto,
+        cajero: obtenerCajeroActual(),
+        items: carrito.map(item => {
+          const prod = productos.find(p => String(p.id) === String(item.id)) || {};
+          return {
+            id: item.id,
+            codigo: prod.codigo || '',
+            nombre: item.nombre,
+            categoria: prod.categoria || 'General',
+            cantidad: item.cantidad,
+            precio: item.precio,
+            costo: parseFloat(prod.costo) || 0,
+            unidad: item.unidad || 'pz'
+          };
+        })
+      };
+
+      const historial = JSON.parse(localStorage.getItem(DB_VENTAS_KEY) || '[]');
+      historial.unshift(nuevaVenta);
+      localStorage.setItem(DB_VENTAS_KEY, JSON.stringify(historial));
+
+      // NUEVO: registrar cada artículo vendido en el kárdex compartido
+      nuevaVenta.items.forEach(item => {
+        registrarMovimientoKardex({
+          productoId: item.id,
+          productoNombre: item.nombre,
+          tipo: 'salida',
+          cantidad: item.cantidad,
+          motivo: 'Venta',
+          origen: 'caja',
+          referencia: nuevaVenta.id
+        });
+      });
+
+      ultimaVentaGenerada = nuevaVenta;
+
+      // 3. Limpiar Caja, Campos y Pantalla en Ceros
+      carrito = [];
+      document.getElementById('inputPagaCon').value = '';
+      document.getElementById('inputDescuento').value = '';
+      document.getElementById('inputBuscar').value = '';
+      document.getElementById('resultadosBusqueda').classList.add('hidden');
+      document.getElementById('resultadosBusqueda').innerHTML = '';
+      document.getElementById('rowDescuentoCalculado').classList.add('hidden');
+      document.getElementById('txtCambio').innerText = "$0.00";
+      document.getElementById('txtCambio').className = "w-full bg-slate-200 border border-slate-300 rounded-lg p-2 text-sm font-black text-slate-700";
+      seleccionarMetodoPago('efectivo');
+      renderizarCarrito();
+
+      // 4. Mostrar Ticket Modal Automáticamente
+      mostrarTicketModal(nuevaVenta);
+    }
+
+    // CONFIGURACIÓN DE TICKET Y DATOS DEL NEGOCIO
+    function cargarConfigTicket() {
+      const config = JSON.parse(localStorage.getItem(DB_TICKET_CFG) || '{}');
+      if (config.nombre) document.getElementById('tkNombre').innerText = config.nombre;
+      if (config.direccion) document.getElementById('tkDireccion').innerText = config.direccion;
+      if (config.telefono) document.getElementById('tkTelefono').innerText = `Tel: ${config.telefono}`;
+      if (config.rfc) document.getElementById('tkRFC').innerText = `RFC: ${config.rfc}`;
+      if (config.mensaje) document.getElementById('tkMensaje').innerText = config.mensaje;
+      if (config.logo) {
+        const logoImg = document.getElementById('tkLogo');
+        logoImg.src = config.logo;
+        logoImg.classList.remove('hidden');
+      }
+    }
+
+    function abrirConfigTicket() {
+      const config = JSON.parse(localStorage.getItem(DB_TICKET_CFG) || '{}');
+      document.getElementById('cfgNombre').value = config.nombre || '';
+      document.getElementById('cfgDireccion').value = config.direccion || '';
+      document.getElementById('cfgTelefono').value = config.telefono || '';
+      document.getElementById('cfgRFC').value = config.rfc || '';
+      document.getElementById('cfgMensaje').value = config.mensaje || '';
+      if (config.logo) {
+        document.getElementById('logoPreview').src = config.logo;
+        document.getElementById('logoPreview').classList.remove('hidden');
+        document.getElementById('logoPlaceholder').classList.add('hidden');
+        document.getElementById('btnQuitarLogo').classList.remove('hidden');
+      }
+      document.getElementById('configModal').classList.remove('hidden');
+      document.getElementById('configModal').classList.add('flex');
+    }
+
+    function cerrarConfigTicket() {
+      document.getElementById('configModal').classList.add('hidden');
+      document.getElementById('configModal').classList.remove('flex');
+    }
+
+    function procesarLogoTicket(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const base64 = e.target.result;
+        document.getElementById('logoPreview').src = base64;
+        document.getElementById('logoPreview').classList.remove('hidden');
+        document.getElementById('logoPlaceholder').classList.add('hidden');
+        document.getElementById('btnQuitarLogo').classList.remove('hidden');
+        window.tempLogoBase64 = base64;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function quitarLogoConfig() {
+      window.tempLogoBase64 = '';
+      document.getElementById('logoPreview').src = '';
+      document.getElementById('logoPreview').classList.add('hidden');
+      document.getElementById('logoPlaceholder').classList.remove('hidden');
+      document.getElementById('btnQuitarLogo').classList.add('hidden');
+    }
+
+    function guardarConfigTicket(e) {
+      e.preventDefault();
+      const configActual = JSON.parse(localStorage.getItem(DB_TICKET_CFG) || '{}');
+      const nuevaConfig = {
+        nombre: document.getElementById('cfgNombre').value.trim(),
+        direccion: document.getElementById('cfgDireccion').value.trim(),
+        telefono: document.getElementById('cfgTelefono').value.trim(),
+        rfc: document.getElementById('cfgRFC').value.trim(),
+        mensaje: document.getElementById('cfgMensaje').value.trim(),
+        logo: window.tempLogoBase64 !== undefined ? window.tempLogoBase64 : (configActual.logo || '')
+      };
+      localStorage.setItem(DB_TICKET_CFG, JSON.stringify(nuevaConfig));
+      cerrarConfigTicket();
+      cargarConfigTicket();
+      alert("✅ Datos del negocio guardados correctamente.");
+    }
+
+    function mostrarTicketModal(venta) {
+      document.getElementById('tkId').innerText = `#${venta.id}`;
+      document.getElementById('tkFecha').innerText = venta.fecha;
+      document.getElementById('tkTotal').innerText = `$${venta.total.toFixed(2)}`;
+      document.getElementById('tkPagaCon').innerText = `$${venta.pagaCon.toFixed(2)}`;
+      document.getElementById('tkCambio').innerText = `$${venta.cambio.toFixed(2)}`;
+
+      const metodoPagoKey = venta.metodoPago || 'efectivo';
+      const metodoPagoTexto = venta.metodoPagoTexto || (METODOS_PAGO[metodoPagoKey] ? METODOS_PAGO[metodoPagoKey].texto : 'Efectivo');
+      document.getElementById('tkMetodoPago').innerText = metodoPagoTexto;
+      document.getElementById('tkCajero').innerText = venta.cajero || 'Sin usuario';
+
+      const pagaConRow = document.getElementById('tkPagaConRow');
+      const cambioRow = document.getElementById('tkCambioRow');
+
+      if (metodoPagoKey === 'efectivo') {
+        pagaConRow.classList.remove('hidden');
+        pagaConRow.classList.add('flex');
+        cambioRow.classList.remove('hidden');
+        cambioRow.classList.add('flex');
+      } else {
+        pagaConRow.classList.add('hidden');
+        pagaConRow.classList.remove('flex');
+        cambioRow.classList.add('hidden');
+        cambioRow.classList.remove('flex');
+      }
+
+      const subtotalRow = document.getElementById('tkSubtotalRow');
+      const descuentoRow = document.getElementById('tkDescuentoRow');
+
+      if (venta.descuento > 0) {
+        subtotalRow.classList.remove('hidden');
+        document.getElementById('tkSubtotal').innerText = `$${venta.subtotal.toFixed(2)}`;
+        descuentoRow.classList.remove('hidden');
+        document.getElementById('tkDescuento').innerText = `-$${venta.descuento.toFixed(2)}`;
+      } else {
+        subtotalRow.classList.add('hidden');
+        descuentoRow.classList.add('hidden');
+      }
+
+      const itemsContainer = document.getElementById('tkItems');
+      itemsContainer.innerHTML = '';
+      venta.items.forEach(item => {
+        const row = document.createElement('div');
+        row.className = "flex justify-between text-[11px]";
+        row.innerHTML = `
+          <span>${item.cantidad}x ${item.nombre}</span>
+          <span>$${(item.precio * item.cantidad).toFixed(2)}</span>
+        `;
+        itemsContainer.appendChild(row);
+      });
+
+      document.getElementById('modalTicket').classList.remove('hidden');
+      document.getElementById('modalTicket').classList.add('flex');
+    }
+
+    function cerrarTicketModal() {
+      document.getElementById('modalTicket').classList.add('hidden');
+      document.getElementById('modalTicket').classList.remove('flex');
+    }
+
+    function verUltimoTicket() {
+      if (!ultimaVentaGenerada) {
+        const historial = JSON.parse(localStorage.getItem(DB_VENTAS_KEY) || '[]');
+        if (historial.length > 0) {
+          ultimaVentaGenerada = historial[0];
+        } else {
+          alert("⚠️ No hay ventas registradas en esta sesión.");
+          return;
+        }
+      }
+      mostrarTicketModal(ultimaVentaGenerada);
+    }
+
+    function imprimirTicket() {
+      window.print();
+    }
+
+    // NUEVO: comparte la IMAGEN real del ticket (con logo incluido),
+    // no solo texto. Usa el selector nativo de compartir del teléfono
+    // para que el usuario elija WhatsApp y la imagen llegue completa.
+    async function compartirTicketWhatsApp() {
+      if (!ultimaVentaGenerada) return;
+
+      const botonWhatsApp = document.querySelector('button[onclick="compartirTicketWhatsApp()"]');
+      const textoOriginalBoton = botonWhatsApp ? botonWhatsApp.innerHTML : '';
+
+      if (botonWhatsApp) {
+        botonWhatsApp.disabled = true;
+        botonWhatsApp.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> <span>Generando...</span>';
+      }
+
+      try {
+        const areaTicket = document.getElementById('ticketPrintArea');
+
+        const canvas = await html2canvas(areaTicket, {
+          backgroundColor: '#ffffff',
+          scale: 2,
+          useCORS: true
+        });
+
+        canvas.toBlob(async (blob) => {
+          if (botonWhatsApp) {
+            botonWhatsApp.disabled = false;
+            botonWhatsApp.innerHTML = textoOriginalBoton;
+          }
+
+          if (!blob) {
+            alert('⚠️ No se pudo generar la imagen del ticket.');
+            return;
+          }
+
+          const nombreArchivo = `ticket-${ultimaVentaGenerada.id}.png`;
+          const archivoImagen = new File([blob], nombreArchivo, { type: 'image/png' });
+
+          if (navigator.canShare && navigator.canShare({ files: [archivoImagen] })) {
+            try {
+              await navigator.share({
+                files: [archivoImagen],
+                title: `Ticket #${ultimaVentaGenerada.id}`,
+                text: `Ticket #${ultimaVentaGenerada.id} - ${document.getElementById('tkNombre').innerText}`
+              });
+            } catch (err) {
+              // El usuario canceló el cuadro de compartir; no hacer nada más.
+            }
+          } else {
+            // Este navegador no soporta compartir archivos (ej. escritorio):
+            // se descarga la imagen para adjuntarla manualmente en WhatsApp.
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = nombreArchivo;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            alert('📥 Este dispositivo no permite compartir imágenes directamente. Se descargó el ticket como imagen — adjúntala manualmente en WhatsApp.');
+          }
+        }, 'image/png');
+
+      } catch (err) {
+        console.error('Error al generar imagen del ticket:', err);
+        if (botonWhatsApp) {
+          botonWhatsApp.disabled = false;
+          botonWhatsApp.innerHTML = textoOriginalBoton;
+        }
+        alert('⚠️ No se pudo generar la imagen del ticket.');
+      }
+    }
+
+    function abrirCamaraScanner() {
+      document.getElementById('scannerModal').classList.remove('hidden');
+      document.getElementById('scannerModal').classList.add('flex');
+
+      // NUEVO: se limita a los formatos de código de barras usados en
+      // retail (más rápido que escanear todos los formatos posibles),
+      // y se activa el detector nativo del navegador cuando esté
+      // disponible (mucho más rápido y preciso que el lector en JS).
+      html5QrcodeScanner = new Html5Qrcode("reader", {
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.CODABAR,
+          Html5QrcodeSupportedFormats.ITF,
+          Html5QrcodeSupportedFormats.QR_CODE
+        ],
+        useBarCodeDetectorIfSupported: true,
+        verbose: false
+      });
+
+      html5QrcodeScanner.start(
+        {
+          facingMode: "environment"
+        },
+        {
+          fps: 20,
+          // NUEVO: recuadro rectangular, más ancho que alto, acorde
+          // a la forma real de un código de barras (antes era un
+          // cuadro 250x250 pensado para QR)
+          qrbox: { width: 280, height: 140 },
+          aspectRatio: 1.7777778
+        },
+        (decodedText) => {
+          cerrarCamaraScanner();
+          const prod = productos.find(p => String(p.codigo) === String(decodedText) && p.activo !== false);
+          if (prod) {
+            agregarAlCarrito(prod.id);
+          } else {
+            alert(`⚠️ Producto con código "${decodedText}" no encontrado.`);
+          }
+        },
+        (error) => {}
+      ).then(() => {
+        // NUEVO: intento silencioso de activar enfoque continuo,
+        // DESPUÉS de que la cámara ya abrió. Si el dispositivo no
+        // lo soporta, simplemente no pasa nada (no rompe el escaneo).
+        try {
+          const video = document.querySelector('#reader video');
+          const track = video && video.srcObject ? video.srcObject.getVideoTracks()[0] : null;
+          if (track && typeof track.applyConstraints === 'function') {
+            track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+          }
+        } catch (e) {}
+      }).catch(err => {
+        alert("⚠️ No se pudo iniciar la cámara.");
+        cerrarCamaraScanner();
+      });
+    }
+
+    function cerrarCamaraScanner() {
+      if (html5QrcodeScanner) {
+        html5QrcodeScanner.stop().then(() => {
+          html5QrcodeScanner.clear();
+        }).catch(err => {});
+      }
+      document.getElementById('scannerModal').classList.add('hidden');
+      document.getElementById('scannerModal').classList.remove('flex');
+    }
+  </script>
+  <!-- ======================================================== -->
+<!-- NAVEGACIÓN INFERIOR Y REPORTES DE CAJA (AppCreator24)     -->
+<!-- Pega este bloque justo antes de la etiqueta </body>      -->
+<!-- ======================================================== -->
+
+<!-- BARRA DE NAVEGACIÓN INFERIOR (BOTTOM NAV) -->
+<nav class="fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-800 flex justify-around items-center p-2 z-40 shadow-2xl">
+  <!-- 1. Corte de Caja Diario -->
+  <button onclick="rptGenerarCorteDiario()" class="flex flex-col items-center justify-center text-emerald-400 w-full py-1 active:scale-95 transition">
+    <i class="fa-solid fa-chart-pie text-base mb-1"></i>
+    <span class="text-[10px] font-bold">Corte Hoy</span>
+  </button>
+
+  <!-- 2. Reporte por Fechas -->
+  <button onclick="rptMostrarFiltroRango()" class="flex flex-col items-center justify-center text-slate-400 hover:text-blue-400 w-full py-1 active:scale-95 transition">
+    <i class="fa-solid fa-calendar-days text-base mb-1"></i>
+    <span class="text-[10px] font-bold">Fechas</span>
+  </button>
+
+  <!-- 3. Ver Último Ticket -->
+  <button onclick="verUltimoTicket()" class="flex flex-col items-center justify-center text-slate-400 hover:text-amber-400 w-full py-1 active:scale-95 transition">
+    <i class="fa-solid fa-receipt text-base mb-1"></i>
+    <span class="text-[10px] font-bold">Ticket</span>
+  </button>
+</nav>
+
+<!-- MODAL CONTENEDOR DE REPORTES -->
+<div id="rptModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 bg-black/80">
+  <div class="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl flex flex-col max-h-[85vh] text-slate-800">
+    
+    <div class="bg-slate-900 text-white p-3 flex justify-between items-center no-print">
+      <h3 id="rptModalTitulo" class="font-bold text-xs flex items-center gap-2">
+        <i class="fa-solid fa-file-invoice text-emerald-400"></i> Reporte
+      </h3>
+      <button onclick="rptCerrarModal()" class="text-slate-400 hover:text-white">
+        <i class="fa-solid fa-xmark text-lg"></i>
+      </button>
+    </div>
+
+    <div id="rptModalCuerpo" class="p-4 overflow-y-auto space-y-3 text-xs">
+      <!-- Se llena dinámicamente con JS -->
+    </div>
+
+  </div>
+</div>
+
+<!-- LÓGICA JS DE REPORTES -->
+<script>
+  let ultimoCorteDatos = null;
+
+  function rptCerrarModal() {
+    document.getElementById('rptModal').classList.add('hidden');
+    document.getElementById('rptModal').classList.remove('flex');
+  }
+
+  // NUEVO: Desglose de totales por método de pago (compatible con ventas
+  // antiguas que no tenían metodoPago: se cuentan como Efectivo)
+  function rptCalcularTotalesPorMetodo(ventas) {
+    const totales = {
+      efectivo: 0,
+      debito: 0,
+      credito: 0,
+      vales: 0
+    };
+
+    ventas.forEach(v => {
+      const metodo = totales.hasOwnProperty(v.metodoPago) ? v.metodoPago : 'efectivo';
+      totales[metodo] += parseFloat(v.total || 0);
+    });
+
+    const totalGeneral = totales.efectivo + totales.debito + totales.credito + totales.vales;
+
+    return { totales, totalGeneral };
+  }
+
+  // NUEVO: Desglose de ventas por cajero/usuario, incluyendo el
+  // desglose por método de pago DENTRO de cada cajero (compatible
+  // con ventas antiguas que no tenían "cajero": se agrupan como
+  // "Sin usuario", y con ventas antiguas sin "metodoPago": se
+  // cuentan como Efectivo)
+  function rptCalcularTotalesPorCajero(ventas) {
+    const porCajero = {};
+
+    ventas.forEach(v => {
+      const nombre = v.cajero || 'Sin usuario';
+      if (!porCajero[nombre]) {
+        porCajero[nombre] = { total: 0, tickets: 0, efectivo: 0, debito: 0, credito: 0, vales: 0 };
+      }
+
+      const metodo = ['efectivo', 'debito', 'credito', 'vales'].includes(v.metodoPago) ? v.metodoPago : 'efectivo';
+
+      porCajero[nombre][metodo] += parseFloat(v.total || 0);
+      porCajero[nombre].total += parseFloat(v.total || 0);
+      porCajero[nombre].tickets += 1;
+    });
+
+    // Se ordena de mayor a menor total vendido
+    return Object.keys(porCajero)
+      .map(nombre => ({ nombre, ...porCajero[nombre] }))
+      .sort((a, b) => b.total - a.total);
+  }
+
+  // NUEVO: Arma el bloque HTML del desglose por cajero (con su propio
+  // desglose por método de pago dentro) y un filtro para ver uno a la
+  // vez. Reutilizable tanto en el Corte Diario como en el Reporte por
+  // Fechas.
+  function rptHtmlDesglosePorCajero(listaCajeros) {
+    if (listaCajeros.length === 0) return '';
+
+    let html = `
+      <div class="space-y-2">
+        <div class="flex items-center justify-between px-0.5">
+          <p class="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Desglose por Cajero</p>
+          <select id="rptFiltroCajero" onchange="rptFiltrarPorCajero()" class="bg-white border border-slate-300 rounded-lg text-[11px] font-bold text-slate-700 py-1 px-1.5">
+            <option value="todos">Todos</option>
+            ${listaCajeros.map(c => `<option value="${c.nombre}">${c.nombre}</option>`).join('')}
+          </select>
+        </div>
+    `;
+
+    listaCajeros.forEach(c => {
+      html += `
+        <div data-cajero-card="${c.nombre}" class="bg-slate-50 border p-2.5 rounded-xl space-y-1.5">
+          <div class="flex justify-between items-center text-slate-800">
+            <span class="flex items-center gap-1.5 font-bold">
+              <i class="fa-solid fa-user text-slate-500"></i> ${c.nombre}
+              <span class="text-[10px] text-slate-400 font-normal">(${c.tickets} ${c.tickets === 1 ? 'ticket' : 'tickets'})</span>
+            </span>
+            <span class="font-black">$${c.total.toFixed(2)}</span>
+          </div>
+          <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] pl-1 border-t border-slate-200 pt-1.5">
+            <div class="flex justify-between"><span class="text-slate-500">Efectivo:</span><span class="font-semibold text-slate-700">$${c.efectivo.toFixed(2)}</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Débito:</span><span class="font-semibold text-slate-700">$${c.debito.toFixed(2)}</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Crédito:</span><span class="font-semibold text-slate-700">$${c.credito.toFixed(2)}</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Vales:</span><span class="font-semibold text-slate-700">$${c.vales.toFixed(2)}</span></div>
+          </div>
+        </div>
+      `;
+    });
+
+    html += `</div>`;
+
+    return html;
+  }
+
+  // NUEVO: Filtra las tarjetas de cajero mostrando solo la
+  // seleccionada (o todas si se elige "Todos")
+  function rptFiltrarPorCajero() {
+    const select = document.getElementById('rptFiltroCajero');
+    if (!select) return;
+
+    const seleccionado = select.value;
+
+    document.querySelectorAll('[data-cajero-card]').forEach(card => {
+      if (seleccionado === 'todos' || card.getAttribute('data-cajero-card') === seleccionado) {
+        card.classList.remove('hidden');
+      } else {
+        card.classList.add('hidden');
+      }
+    });
+  }
+
+  // 1. CORTE DE CAJA DIARIO
+  function rptGenerarCorteDiario() {
+    const hoy = new Date();
+    const diaActual = hoy.getDate();
+    const mesActual = hoy.getMonth() + 1;
+    const anioActual = hoy.getFullYear();
+
+    const historial = JSON.parse(localStorage.getItem('pos_db_ventas') || '[]');
+
+    // Filtrar ventas del día actual
+    const ventasHoy = historial.filter(v => 
+      v.anio === anioActual && v.mes === mesActual && v.dia === diaActual
+    );
+
+    let totalDescuentos = 0;
+    let totalArticulos = 0;
+
+    ventasHoy.forEach(v => {
+      totalDescuentos += parseFloat(v.descuento || 0);
+      if (Array.isArray(v.items)) {
+        v.items.forEach(i => totalArticulos += parseFloat(i.cantidad || 0));
+      }
+    });
+
+    const { totales: totalesPorMetodo, totalGeneral } = rptCalcularTotalesPorMetodo(ventasHoy);
+    const desglosePorCajero = rptCalcularTotalesPorCajero(ventasHoy);
+
+    const fechaFormateada = `${diaActual.toString().padStart(2, '0')}/${mesActual.toString().padStart(2, '0')}/${anioActual}`;
+
+    // Guardar datos temporales para envío por WhatsApp
+    ultimoCorteDatos = {
+      fecha: fechaFormateada,
+      total: totalGeneral.toFixed(2),
+      totalEfectivo: totalesPorMetodo.efectivo.toFixed(2),
+      totalDebito: totalesPorMetodo.debito.toFixed(2),
+      totalCredito: totalesPorMetodo.credito.toFixed(2),
+      totalVales: totalesPorMetodo.vales.toFixed(2),
+      tickets: ventasHoy.length,
+      articulos: totalArticulos,
+      descuentos: totalDescuentos.toFixed(2),
+      porCajero: desglosePorCajero
+    };
+
+    // NUEVO: datos del negocio (sin logo), mismo origen que el ticket de venta
+    const configNegocio = JSON.parse(localStorage.getItem(DB_TICKET_CFG) || '{}');
+    const nombreNegocioTk = configNegocio.nombre || 'MI NEGOCIO';
+    const direccionTk = configNegocio.direccion || '';
+    const telefonoTk = configNegocio.telefono || '';
+    const rfcTk = configNegocio.rfc || '';
+
+    // NUEVO: Corte de Caja Diario en formato de ticket (mismo estilo que el ticket de venta, sin logo)
+    let html = `
+      <div id="cortePrintArea" class="gp-print-area font-mono text-xs text-slate-800 space-y-3">
+
+        <div class="text-center space-y-1 border-b border-dashed border-slate-300 pb-3">
+          <h2 class="font-black text-sm uppercase text-slate-900">${nombreNegocioTk}</h2>
+          ${direccionTk ? `<p class="text-[11px] text-slate-600">${direccionTk}</p>` : ''}
+          ${telefonoTk ? `<p class="text-[11px] text-slate-600">Tel: ${telefonoTk}</p>` : ''}
+          ${rfcTk ? `<p class="text-[10px] text-slate-500">RFC: ${rfcTk}</p>` : ''}
+        </div>
+
+        <div class="text-center border-b border-dashed border-slate-300 pb-2">
+          <p class="font-black text-sm uppercase text-slate-900">Corte de Caja Diario</p>
+          <p class="text-[11px] text-slate-600">${fechaFormateada}</p>
+        </div>
+
+        <div class="space-y-0.5 text-[11px] border-b border-dashed border-slate-300 pb-2">
+          <div class="flex justify-between"><span>Efectivo:</span><span class="font-bold">$${totalesPorMetodo.efectivo.toFixed(2)}</span></div>
+          <div class="flex justify-between"><span>Tarjeta de débito:</span><span class="font-bold">$${totalesPorMetodo.debito.toFixed(2)}</span></div>
+          <div class="flex justify-between"><span>Tarjeta de crédito:</span><span class="font-bold">$${totalesPorMetodo.credito.toFixed(2)}</span></div>
+          <div class="flex justify-between"><span>Vales:</span><span class="font-bold">$${totalesPorMetodo.vales.toFixed(2)}</span></div>
+          <div class="flex justify-between font-black text-sm text-slate-900 border-t border-slate-200 pt-1">
+            <span>TOTAL GENERAL:</span><span>$${totalGeneral.toFixed(2)}</span>
+          </div>
+        </div>
+
+        ${desglosePorCajero.length > 0 ? `
+        <div class="space-y-2 border-b border-dashed border-slate-300 pb-2">
+          <p class="font-bold text-[11px] uppercase text-slate-700">Desglose por Cajero</p>
+          ${desglosePorCajero.map(c => `
+            <div class="text-[11px] space-y-0.5">
+              <p class="font-bold border-b border-slate-200 pb-0.5">${c.nombre} <span class="font-normal text-slate-500">(${c.tickets} ${c.tickets === 1 ? 'ticket' : 'tickets'})</span></p>
+              <div class="flex justify-between"><span>Efectivo:</span><span>$${c.efectivo.toFixed(2)}</span></div>
+              <div class="flex justify-between"><span>Débito:</span><span>$${c.debito.toFixed(2)}</span></div>
+              <div class="flex justify-between"><span>Crédito:</span><span>$${c.credito.toFixed(2)}</span></div>
+              <div class="flex justify-between"><span>Vales:</span><span>$${c.vales.toFixed(2)}</span></div>
+              <div class="flex justify-between font-bold"><span>Subtotal:</span><span>$${c.total.toFixed(2)}</span></div>
+            </div>
+          `).join('')}
+        </div>
+        ` : ''}
+
+        <div class="space-y-0.5 text-[11px] border-b border-dashed border-slate-300 pb-2">
+          <div class="flex justify-between"><span>Tickets realizados:</span><span class="font-bold">${ventasHoy.length}</span></div>
+          <div class="flex justify-between"><span>Productos vendidos:</span><span class="font-bold">${totalArticulos} pzs</span></div>
+          <div class="flex justify-between font-bold text-amber-700"><span>Descuentos otorgados:</span><span>-$${totalDescuentos.toFixed(2)}</span></div>
+        </div>
+
+        <div class="text-center pt-1">
+          <p class="text-[9px] text-slate-400">Reporte generado automáticamente</p>
+        </div>
+
+      </div>
+
+      <div class="flex gap-2 pt-2 no-print">
+        <button onclick="rptCompartirCorteWhatsApp()" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl shadow flex items-center justify-center gap-1.5 text-xs active:scale-95 transition">
+          <i class="fa-brands fa-whatsapp text-sm"></i>
+          <span>WhatsApp</span>
+        </button>
+        <button onclick="window.print()" class="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 rounded-xl shadow flex items-center justify-center gap-1.5 text-xs active:scale-95 transition">
+          <i class="fa-solid fa-print text-sm"></i>
+          <span>Imprimir</span>
+        </button>
+      </div>
+    `;
+
+    document.getElementById('rptModalTitulo').innerHTML = `<i class="fa-solid fa-cash-register text-emerald-400"></i> Corte de Caja Diario`;
+    document.getElementById('rptModalCuerpo').innerHTML = html;
+    document.getElementById('rptModal').classList.remove('hidden');
+    document.getElementById('rptModal').classList.add('flex');
+  }
+
+  // COMPARTIR CORTE POR WHATSAPP
+  // NUEVO: comparte la IMAGEN del corte (mismo mecanismo que el ticket de venta)
+  async function rptCompartirCorteWhatsApp() {
+    if (!ultimoCorteDatos) return;
+
+    const areaCorte = document.getElementById('cortePrintArea');
+    if (!areaCorte) return;
+
+    const botonWhatsApp = document.querySelector('button[onclick="rptCompartirCorteWhatsApp()"]');
+    const textoOriginalBoton = botonWhatsApp ? botonWhatsApp.innerHTML : '';
+
+    if (botonWhatsApp) {
+      botonWhatsApp.disabled = true;
+      botonWhatsApp.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> <span>Generando...</span>';
+    }
+
+    try {
+      const canvas = await html2canvas(areaCorte, {
+        backgroundColor: '#ffffff',
+        scale: 2,
+        useCORS: true
+      });
+
+      canvas.toBlob(async (blob) => {
+        if (botonWhatsApp) {
+          botonWhatsApp.disabled = false;
+          botonWhatsApp.innerHTML = textoOriginalBoton;
+        }
+
+        if (!blob) {
+          alert('⚠️ No se pudo generar la imagen del corte.');
+          return;
+        }
+
+        const nombreArchivo = `corte-caja-${ultimoCorteDatos.fecha.replace(/\//g, '-')}.png`;
+        const archivoImagen = new File([blob], nombreArchivo, { type: 'image/png' });
+
+        if (navigator.canShare && navigator.canShare({ files: [archivoImagen] })) {
+          try {
+            await navigator.share({
+              files: [archivoImagen],
+              title: `Corte de Caja ${ultimoCorteDatos.fecha}`,
+              text: `Corte de Caja Diario - ${ultimoCorteDatos.fecha}`
+            });
+          } catch (err) {
+            // El usuario canceló el cuadro de compartir; no hacer nada más.
+          }
+        } else {
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = nombreArchivo;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          alert('📥 Este dispositivo no permite compartir imágenes directamente. Se descargó el corte como imagen — adjúntalo manualmente en WhatsApp.');
+        }
+      }, 'image/png');
+
+    } catch (err) {
+      console.error('Error al generar imagen del corte:', err);
+      if (botonWhatsApp) {
+        botonWhatsApp.disabled = false;
+        botonWhatsApp.innerHTML = textoOriginalBoton;
+      }
+      alert('⚠️ No se pudo generar la imagen del corte.');
+    }
+  }
+
+  // 2. FILTRO POR RANGO DE FECHAS
+  function rptMostrarFiltroRango() {
+    const hoyStr = new Date().toISOString().split('T')[0];
+
+    let html = `
+      <div class="space-y-3">
+        <div>
+          <label class="block font-bold text-slate-600 mb-1">Fecha Inicial:</label>
+          <input type="date" id="rptFechaInicio" value="${hoyStr}" class="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-blue-500">
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-600 mb-1">Fecha Final:</label>
+          <input type="date" id="rptFechaFin" value="${hoyStr}" class="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-blue-500">
+        </div>
+
+        <button onclick="rptCalcularReporteRango()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl shadow transition flex items-center justify-center gap-2 text-xs">
+          <i class="fa-solid fa-magnifying-glass"></i> Consultar Rango
+        </button>
+
+        <div id="rptResultadoRango" class="pt-2"></div>
+      </div>
+    `;
+
+    document.getElementById('rptModalTitulo').innerHTML = `<i class="fa-solid fa-calendar-days text-blue-400"></i> Reporte por Fechas`;
+    document.getElementById('rptModalCuerpo').innerHTML = html;
+    document.getElementById('rptModal').classList.remove('hidden');
+    document.getElementById('rptModal').classList.add('flex');
+  }
+
+  // 2.1 CÁLCULO DEL RANGO DE FECHAS
+  function rptCalcularReporteRango() {
+    const fInicioVal = document.getElementById('rptFechaInicio').value;
+    const fFinVal = document.getElementById('rptFechaFin').value;
+
+    if (!fInicioVal || !fFinVal) {
+      alert("⚠️ Por favor selecciona la fecha de inicio y la fecha de fin.");
+      return;
+    }
+
+    const inicio = new Date(fInicioVal + "T00:00:00");
+    const fin = new Date(fFinVal + "T23:59:59");
+
+    const historial = JSON.parse(localStorage.getItem('pos_db_ventas') || '[]');
+
+    const ventasFiltradas = historial.filter(v => {
+      let fVenta;
+      if (v.fechaISO) {
+        fVenta = new Date(v.fechaISO);
+      } else if (v.anio && v.mes && v.dia) {
+        fVenta = new Date(v.anio, v.mes - 1, v.dia);
+      } else {
+        return false;
+      }
+      return fVenta >= inicio && fVenta <= fin;
+    });
+
+    let totalDescuentos = 0;
+    let totalArticulos = 0;
+
+    ventasFiltradas.forEach(v => {
+      totalDescuentos += parseFloat(v.descuento || 0);
+      if (Array.isArray(v.items)) {
+        v.items.forEach(i => totalArticulos += parseFloat(i.cantidad || 0));
+      }
+    });
+
+    const { totales: totalesPorMetodoRango, totalGeneral: totalRango } = rptCalcularTotalesPorMetodo(ventasFiltradas);
+    const desglosePorCajeroRango = rptCalcularTotalesPorCajero(ventasFiltradas);
+
+    let resHtml = `
+      <div class="border-t border-dashed border-slate-300 pt-3 space-y-2">
+        <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center">
+          <p class="text-[10px] font-bold text-blue-600 uppercase">Total en Rango</p>
+          <h2 class="text-2xl font-black text-blue-800">$${totalRango.toFixed(2)}</h2>
+        </div>
+
+        <div class="space-y-1.5">
+          <div class="flex justify-between items-center bg-slate-50 border p-2 rounded-xl text-slate-700">
+            <span class="flex items-center gap-1.5 font-semibold"><i class="fa-solid fa-money-bill-wave text-emerald-600"></i> Efectivo</span>
+            <span class="font-bold">$${totalesPorMetodoRango.efectivo.toFixed(2)}</span>
+          </div>
+          <div class="flex justify-between items-center bg-slate-50 border p-2 rounded-xl text-slate-700">
+            <span class="flex items-center gap-1.5 font-semibold"><i class="fa-solid fa-credit-card text-blue-600"></i> Tarjeta de débito</span>
+            <span class="font-bold">$${totalesPorMetodoRango.debito.toFixed(2)}</span>
+          </div>
+          <div class="flex justify-between items-center bg-slate-50 border p-2 rounded-xl text-slate-700">
+            <span class="flex items-center gap-1.5 font-semibold"><i class="fa-solid fa-credit-card text-indigo-600"></i> Tarjeta de crédito</span>
+            <span class="font-bold">$${totalesPorMetodoRango.credito.toFixed(2)}</span>
+          </div>
+          <div class="flex justify-between items-center bg-slate-50 border p-2 rounded-xl text-slate-700">
+            <span class="flex items-center gap-1.5 font-semibold"><i class="fa-solid fa-ticket text-amber-600"></i> Vales</span>
+            <span class="font-bold">$${totalesPorMetodoRango.vales.toFixed(2)}</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 text-center">
+          <div class="bg-slate-50 border p-2 rounded-xl">
+            <p class="text-[10px] text-slate-500 font-bold">Tickets</p>
+            <p class="text-xs font-bold text-slate-800">${ventasFiltradas.length}</p>
+          </div>
+          <div class="bg-slate-50 border p-2 rounded-xl">
+            <p class="text-[10px] text-slate-500 font-bold">Productos</p>
+            <p class="text-xs font-bold text-slate-800">${totalArticulos} pzs</p>
+          </div>
+        </div>
+
+        ${rptHtmlDesglosePorCajero(desglosePorCajeroRango)}
+
+        <div class="flex justify-between items-center bg-slate-100 p-2 rounded-xl text-slate-700 font-semibold text-[11px]">
+          <span>Descuentos:</span>
+          <span class="font-bold text-amber-600">-$${totalDescuentos.toFixed(2)}</span>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('rptResultadoRango').innerHTML = resHtml;
+  }
+</script>
+
+</body>
+</html>

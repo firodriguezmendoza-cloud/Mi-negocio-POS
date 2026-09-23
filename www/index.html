@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mi Negocio POS</title>
+<style>
+:root{--bg:#0f172a;--card:#ffffff;--accent:#059669;--text:#1e293b;--muted:#64748b}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:#fff;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);min-height:100vh}
+header{padding:28px 20px 18px;text-align:center}
+header h1{margin:0 0 4px;font-size:22px}
+header p{margin:0;color:#94a3b8;font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;padding:10px 16px 30px}
+a.card{background:var(--card);color:var(--text);border-radius:16px;padding:18px 12px;text-decoration:none;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;box-shadow:0 6px 18px rgba(0,0,0,.25)}
+a.card .ico{font-size:28px}
+a.card b{font-size:13px;line-height:1.3}
+a.card small{color:var(--muted);font-size:11px}
+footer{text-align:center;color:#64748b;font-size:11px;padding:10px 16px 24px}
+</style>
+</head>
+<body>
+<header>
+  <h1>🏪 Mi Negocio POS</h1>
+  <p>Selecciona un módulo</p>
+</header>
+<div class="grid">
+  <a class="card" href="caja.html"><span class="ico">💵</span><b>Caja</b><small>Punto de venta</small></a>
+  <a class="card" href="inventario.html"><span class="ico">📦</span><b>Inventario</b><small>General</small></a>
+  <a class="card" href="agregar.html"><span class="ico">➕</span><b>Agregar</b><small>Productos</small></a>
+  <a class="card" href="merma.html"><span class="ico">🗑️</span><b>Merma</b><small>Pérdidas</small></a>
+  <a class="card" href="proveedores.html"><span class="ico">📇</span><b>Proveedores</b><small>Directorio</small></a>
+  <a class="card" href="gastos.html"><span class="ico">💸</span><b>Gastos</b><small>Por proveedor</small></a>
+  <a class="card" href="seguridad.html"><span class="ico">🔐</span><b>Usuarios</b><small>y accesos</small></a>
+  <a class="card" href="respaldo.html"><span class="ico">☁️</span><b>Respaldo</b><small>y restauración</small></a>
+  <a class="card" href="politica.html"><span class="ico">📜</span><b>Política</b><small>de privacidad</small></a>
+</div>
+<footer>v1.0</footer>
+</body>
+</html>
