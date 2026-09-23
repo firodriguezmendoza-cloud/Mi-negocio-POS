@@ -1,0 +1,8 @@
+{
+  "appId": "com.minegocio.pos",
+  "appName": "Mi Negocio POS",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}
