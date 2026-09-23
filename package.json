@@ -1,0 +1,17 @@
+{
+  "name": "mi-negocio-pos",
+  "version": "1.0.0",
+  "description": "App de punto de venta e inventario",
+  "scripts": {
+    "android": "npx cap open android"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/core": "^6.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0"
+  }
+}
