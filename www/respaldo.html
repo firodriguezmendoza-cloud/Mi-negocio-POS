@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<!-- =========================================================
+     BLOQUE DE SEGURIDAD "SOLO ADMINISTRADOR"
+     Versión configurable: respeta la configuración de
+     "Módulos Bloqueados" definida en Gestión de Usuarios,
+     igual que Agregar Productos, Inventario, Merma, Directorio
+     de Proveedores y Gestión de Gastos.
+
+     ⚠️ Clave usada en esta plantilla: 'respaldo'
+     ========================================================= -->
+
+<div id="modalSeguridadAdmin" style="position:fixed; top:0; left:0; width:100%; height:100%; background:#0f172a; z-index:999999; display:flex; align-items:center; justify-content:center; font-family:sans-serif;">
+  <div style="background:white; padding:24px; border-radius:16px; width:85%; max-width:300px; text-align:center; box-shadow:0 10px 25px rgba(0,0,0,0.5);">
+    <div style="font-size:32px; margin-bottom:8px;">🔐</div>
+    <h3 style="margin:0 0 6px 0; font-size:16px; color:#1e293b;">Área Exclusiva de Administrador</h3>
+    <p style="margin:0 0 14px 0; font-size:11px; color:#64748b;">Esta sección incluye información sensible de tu negocio. Ingresa tu PIN de Administrador.</p>
+    <input type="password" id="inputPinAdmin" placeholder="••••" maxlength="6" style="width:100%; padding:12px; font-size:22px; text-align:center; border:1px solid #cbd5e1; border-radius:10px; margin-bottom:12px; box-sizing:border-box; letter-spacing:6px;" />
+    <button onclick="verificarSoloAdmin()" style="width:100%; background:#7c3aed; color:white; border:none; padding:12px; border-radius:10px; font-weight:bold; font-size:13px; cursor:pointer;">Verificar Acceso</button>
+  </div>
+</div>
+
+<script>
+  var NOMBRE_MODULO_SEGURIDAD = 'respaldo';
+
+  function moduloRequierePinAdmin() {
+    var datos = localStorage.getItem('pos_db_modulos_bloqueados');
+    if (!datos) return true;
+    try {
+      var config = JSON.parse(datos);
+      if (!config || typeof config !== 'object' || Array.isArray(config)) return true;
+      return config[NOMBRE_MODULO_SEGURIDAD] !== false;
+    } catch (e) {
+      return true;
+    }
+  }
+
+  window.addEventListener('DOMContentLoaded', () => {
+    const datosUsuarios = localStorage.getItem('pos_db_users');
+    if (!datosUsuarios) {
+      document.getElementById('modalSeguridadAdmin').style.display = 'none';
+      return;
+    }
+
+    try {
+      const usuarios = JSON.parse(datosUsuarios);
+      const existeAdmin = Array.isArray(usuarios) && usuarios.some(u => u.rol === 'administrador');
+      if (!existeAdmin || !moduloRequierePinAdmin()) {
+        document.getElementById('modalSeguridadAdmin').style.display = 'none';
+      }
+    } catch (e) {
+      document.getElementById('modalSeguridadAdmin').style.display = 'none';
+    }
+  });
+
+  function verificarSoloAdmin() {
+    const pinIngresado = document.getElementById('inputPinAdmin').value.trim();
+    const datosUsuarios = localStorage.getItem('pos_db_users');
+
+    if (!datosUsuarios) {
+      document.getElementById('modalSeguridadAdmin').style.display = 'none';
+      return;
+    }
+
+    const usuarios = JSON.parse(datosUsuarios);
+    const existeAdmin = usuarios.some(u => u.rol === 'administrador');
+
+    if (!existeAdmin || !moduloRequierePinAdmin()) {
+      document.getElementById('modalSeguridadAdmin').style.display = 'none';
+      return;
+    }
+
+    const usuarioValido = usuarios.find(u => String(u.pin) === String(pinIngresado) && u.rol === 'administrador');
+
+    if (usuarioValido) {
+      document.getElementById('modalSeguridadAdmin').style.display = 'none';
+    } else {
+      alert("⛔ Acceso denegado. Este menú está restringido únicamente a Administradores.");
+      document.getElementById('inputPinAdmin').value = "";
+    }
+  }
+</script>
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Respaldo y Restauración</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    input, select { font-size: 16px !important; }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen pb-12">
+
+  <header class="bg-slate-900 text-white p-4 sticky top-0 z-30 shadow-md">
+    <div class="max-w-xl mx-auto flex items-center gap-2">
+      <i class="fa-solid fa-box-archive text-xl text-purple-400"></i>
+      <h1 class="font-bold text-lg">Respaldo y Restauración</h1>
+    </div>
+  </header>
+
+  <main class="max-w-xl mx-auto p-4 space-y-4">
+
+    <!-- AVISO DE RECORDATORIO -->
+    <div id="bannerRecordatorio" class="hidden bg-amber-50 border border-amber-300 text-amber-800 text-xs font-bold p-3 rounded-xl flex items-center gap-2">
+      <i class="fa-solid fa-clock text-amber-500"></i>
+      <span id="textoBannerRecordatorio"></span>
+    </div>
+
+    <!-- GENERAR RESPALDO -->
+    <section class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+      <h2 class="font-bold text-slate-800 text-sm flex items-center gap-2 border-b pb-2">
+        <i class="fa-solid fa-cloud-arrow-down text-purple-600"></i> Generar Respaldo
+      </h2>
+
+      <p class="text-xs text-slate-500">
+        Junta toda la información de tu negocio (productos, ventas, usuarios, mermas, gastos, proveedores y kárdex) en un solo archivo que puedes guardar donde tú decidas: Google Drive, correo, WhatsApp, o la memoria de tu dispositivo.
+      </p>
+
+      <button onclick="generarRespaldo()" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl shadow-md active:scale-98 transition flex items-center justify-center gap-2 text-sm">
+        <i class="fa-solid fa-download"></i>
+        <span>Generar Respaldo</span>
+      </button>
+
+      <p id="textoUltimoRespaldo" class="text-[11px] text-slate-500 text-center">Aún no has generado ningún respaldo.</p>
+    </section>
+
+    <!-- RESTAURAR RESPALDO -->
+    <section class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+      <h2 class="font-bold text-slate-800 text-sm flex items-center gap-2 border-b pb-2">
+        <i class="fa-solid fa-rotate-left text-blue-600"></i> Restaurar Respaldo
+      </h2>
+
+      <p class="text-xs text-slate-500">
+        Elige un archivo de respaldo generado anteriormente para recuperar tu información — útil si cambiaste de dispositivo o reinstalaste la aplicación.
+      </p>
+
+      <input type="file" id="inputArchivoRespaldo" accept=".json,application/json" class="hidden" onchange="leerArchivoRespaldo(event)">
+      <button onclick="document.getElementById('inputArchivoRespaldo').click()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-md active:scale-98 transition flex items-center justify-center gap-2 text-sm">
+        <i class="fa-solid fa-file-arrow-up"></i>
+        <span>Elegir Archivo de Respaldo</span>
+      </button>
+
+      <div id="resumenRespaldo" class="hidden bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1.5 text-xs"></div>
+    </section>
+
+    <!-- RECORDATORIO -->
+    <section class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+      <h2 class="font-bold text-slate-800 text-sm flex items-center gap-2 border-b pb-2">
+        <i class="fa-solid fa-bell text-amber-500"></i> Recordatorio de Respaldo
+      </h2>
+
+      <label class="flex items-center justify-between text-xs font-bold text-slate-600">
+        <span>Avisarme dentro de la app si llevo tiempo sin respaldar</span>
+        <input type="checkbox" id="toggleRecordatorio" onchange="guardarConfigRecordatorio()" class="w-5 h-5 accent-purple-600">
+      </label>
+
+      <div>
+        <label class="block text-xs font-bold text-slate-600 mb-1">Avisarme cada:</label>
+        <select id="selectFrecuencia" onchange="guardarConfigRecordatorio()" class="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-sm font-bold text-slate-700">
+          <option value="1">1 día</option>
+          <option value="3">3 días</option>
+          <option value="7">7 días</option>
+          <option value="15">15 días</option>
+          <option value="30">30 días</option>
+        </select>
+      </div>
+
+      <p class="text-[11px] text-slate-400 leading-relaxed">
+        Este aviso aparece dentro de la app cada vez que la abres — no es una notificación del sistema operativo mientras la app está cerrada.
+      </p>
+    </section>
+
+  </main>
+
+  <script>
+    // =========================================================
+    // CLAVES QUE COMPONEN EL RESPALDO
+    // =========================================================
+    const RESPALDO_CLAVES = [
+      'pos_db_products',
+      'pos_db_ventas',
+      'pos_db_users',
+      'pos_db_modulos_bloqueados',
+      'pos_db_merma_history',
+      'pos_db_kardex',
+      'pos_db_ticket_config',
+      'gastosProveedores',
+      'directorioProveedores',
+      'inventario_productos'
+    ];
+
+    const RESPALDO_ETIQUETAS = {
+      pos_db_products: 'Productos',
+      pos_db_ventas: 'Ventas',
+      pos_db_users: 'Usuarios',
+      pos_db_modulos_bloqueados: 'Módulos bloqueados',
+      pos_db_merma_history: 'Historial de mermas',
+      pos_db_kardex: 'Kárdex de movimientos',
+      pos_db_ticket_config: 'Datos del negocio (ticket)',
+      gastosProveedores: 'Gastos',
+      directorioProveedores: 'Directorio de proveedores',
+      inventario_productos: 'Inventario (formato anterior)'
+    };
+
+    const RESPALDO_TIPO = 'respaldo-punto-de-venta';
+    const RESPALDO_ULTIMA_FECHA_KEY = 'pos_respaldo_ultima_fecha';
+    const RESPALDO_CONFIG_RECORDATORIO_KEY = 'pos_respaldo_recordatorio';
+
+    let paqueteRespaldoPendiente = null;
+
+/* =====================================================
+   NUEVO
+   DEPURACIÓN TRIMESTRAL DE VENTAS Y GASTOS
+
+   Cada 3 meses (a partir del registro más antiguo de cada
+   tipo), se avisa 7 días antes, se recuerda 3 días después
+   de ese primer aviso, y a los 7 días del primer aviso se
+   elimina SOLO lo que ya tiene más de 3 meses de antigüedad
+   (lo reciente se conserva). El Kárdex no se toca.
+
+   Este bloque es idéntico en Caja, Gestión de Gastos y
+   Respaldo y Restauración — es el único lugar donde puede
+   "revisarse" el ciclo, ya que no existe un proceso en
+   segundo plano real (cada módulo es independiente).
+===================================================== */
+
+const GP_DEPURACION_MESES = 3;
+const GP_DEPURACION_AVISO_DIAS = 7;
+const GP_DEPURACION_SEGUNDO_AVISO_DIAS = 4; // 3 días después del primer aviso
+
+function gpDepuracionSumarMeses(fechaISO, meses) {
+  const f = new Date(fechaISO);
+  f.setMonth(f.getMonth() + meses);
+  return f.toISOString();
+}
+
+function gpDepuracionObtenerEstado(claveEstado) {
+  const data = localStorage.getItem(claveEstado);
+  if (!data) return null;
+  try {
+    return JSON.parse(data);
+  } catch (e) {
+    return null;
+  }
+}
+
+function gpDepuracionGuardarEstado(claveEstado, estado) {
+  localStorage.setItem(claveEstado, JSON.stringify(estado));
+}
+
+function gpDepuracionContenedorAvisos() {
+  let cont = document.getElementById('gpContenedorAvisosDepuracion');
+  if (!cont) {
+    cont = document.createElement('div');
+    cont.id = 'gpContenedorAvisosDepuracion';
+    cont.style.cssText = 'position:fixed; top:0; left:0; right:0; z-index:999998; display:flex; flex-direction:column; gap:6px; padding:8px; pointer-events:none;';
+    document.body.appendChild(cont);
+  }
+  return cont;
+}
+
+function gpDepuracionMostrarAviso(mensaje, color) {
+  const cont = gpDepuracionContenedorAvisos();
+  const aviso = document.createElement('div');
+  aviso.style.cssText = `background:${color}; color:#fff; font-family:sans-serif; font-size:12px; font-weight:bold; line-height:1.4; padding:10px 12px; border-radius:10px; box-shadow:0 4px 10px rgba(0,0,0,.25); pointer-events:auto; display:flex; justify-content:space-between; align-items:flex-start; gap:10px; max-width:480px; margin:0 auto; width:100%; box-sizing:border-box;`;
+  aviso.innerHTML = `<span>${mensaje}</span><button style="background:rgba(255,255,255,.25); border:none; color:#fff; border-radius:6px; padding:4px 8px; font-weight:bold; cursor:pointer; flex-shrink:0;" onclick="this.parentElement.remove()">✕</button>`;
+  cont.appendChild(aviso);
+}
+
+// tipo: 'ventas' | 'gastos'
+// claveDatos: clave en localStorage donde viven los registros
+// campoFecha: nombre del campo de fecha dentro de cada registro
+function gpVerificarDepuracion(tipo, claveDatos, campoFecha) {
+  const claveEstado = 'pos_depuracion_' + tipo;
+  let estado = gpDepuracionObtenerEstado(claveEstado);
+
+  const datosCrudos = localStorage.getItem(claveDatos);
+  let registros = [];
+  try {
+    registros = datosCrudos ? JSON.parse(datosCrudos) : [];
+  } catch (e) {
+    registros = [];
+  }
+
+  if (!Array.isArray(registros) || registros.length === 0) {
+    return; // sin datos todavía, sin ciclo que revisar
+  }
+
+  const etiqueta = tipo === 'ventas' ? 'ventas' : 'gastos';
+
+  if (!estado || !estado.fechaAncla) {
+    // Primer ciclo: se ancla a la fecha del registro más antiguo existente
+    const fechas = registros.map(r => r[campoFecha]).filter(Boolean).sort();
+    const fechaAncla = fechas[0] || new Date().toISOString();
+    estado = {
+      fechaAncla: fechaAncla,
+      proximoCorte: gpDepuracionSumarMeses(fechaAncla, GP_DEPURACION_MESES),
+      aviso7Mostrado: false,
+      aviso3Mostrado: false
+    };
+    gpDepuracionGuardarEstado(claveEstado, estado);
+  }
+
+  const ahora = new Date();
+  const proximoCorte = new Date(estado.proximoCorte);
+  const msPorDia = 24 * 60 * 60 * 1000;
+  const diasParaCorte = (proximoCorte - ahora) / msPorDia;
+  const fechaCorteTexto = proximoCorte.toLocaleDateString();
+
+  if (diasParaCorte <= 0) {
+    // Ejecutar depuración: eliminar solo lo que ya tiene más de 3 meses
+    const limite = new Date(ahora);
+    limite.setMonth(limite.getMonth() - GP_DEPURACION_MESES);
+
+    const registrosConservados = registros.filter(r => {
+      const f = r[campoFecha] ? new Date(r[campoFecha]) : null;
+      return !f || isNaN(f.getTime()) || f >= limite; // sin fecha válida = se conserva por seguridad
+    });
+
+    const totalEliminados = registros.length - registrosConservados.length;
+    localStorage.setItem(claveDatos, JSON.stringify(registrosConservados));
+
+    estado.proximoCorte = gpDepuracionSumarMeses(estado.proximoCorte, GP_DEPURACION_MESES);
+    estado.aviso7Mostrado = false;
+    estado.aviso3Mostrado = false;
+    gpDepuracionGuardarEstado(claveEstado, estado);
+
+    if (totalEliminados > 0) {
+      gpDepuracionMostrarAviso(
+        `🧹 Depuración automática: se eliminaron ${totalEliminados} registro(s) de ${etiqueta} con más de 3 meses de antigüedad. Tu información reciente sigue intacta.`,
+        '#475569'
+      );
+    }
+    return;
+  }
+
+  if (diasParaCorte <= GP_DEPURACION_AVISO_DIAS && !estado.aviso7Mostrado) {
+    estado.aviso7Mostrado = true;
+    gpDepuracionGuardarEstado(claveEstado, estado);
+    gpDepuracionMostrarAviso(
+      `⚠️ Aviso: el ${fechaCorteTexto} se eliminará automáticamente la información de ${etiqueta} con más de 3 meses de antigüedad, para mantener el sistema saludable. Genera un respaldo desde "Respaldo y Restauración" si quieres conservarla.`,
+      '#d97706'
+    );
+    return;
+  }
+
+  if (diasParaCorte <= GP_DEPURACION_SEGUNDO_AVISO_DIAS && estado.aviso7Mostrado && !estado.aviso3Mostrado) {
+    estado.aviso3Mostrado = true;
+    gpDepuracionGuardarEstado(claveEstado, estado);
+    gpDepuracionMostrarAviso(
+      `⏰ Recordatorio: el ${fechaCorteTexto} se eliminará la información de ${etiqueta} con más de 3 meses de antigüedad. ¿Ya generaste tu respaldo?`,
+      '#dc2626'
+    );
+    return;
+  }
+}
+
+function gpDepuracionRevisarTodo() {
+  gpVerificarDepuracion('ventas', 'pos_db_ventas', 'fechaISO');
+  gpVerificarDepuracion('gastos', 'gastosProveedores', 'fechaRegistro');
+}
+
+
+
+    document.addEventListener('DOMContentLoaded', () => {
+      cargarConfigRecordatorio();
+      actualizarEstadoRecordatorio();
+      gpDepuracionRevisarTodo();
+    });
+
+    // =========================================================
+    // GENERAR RESPALDO
+    // =========================================================
+    async function generarRespaldo() {
+      const datos = {};
+
+      RESPALDO_CLAVES.forEach(clave => {
+        const valorCrudo = localStorage.getItem(clave);
+        if (valorCrudo === null) return;
+        try {
+          datos[clave] = JSON.parse(valorCrudo);
+        } catch (e) {
+          datos[clave] = valorCrudo;
+        }
+      });
+
+      const paquete = {
+        tipo: RESPALDO_TIPO,
+        version: 1,
+        fecha: new Date().toISOString(),
+        datos: datos
+      };
+
+      const json = JSON.stringify(paquete, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const fechaArchivo = new Date().toISOString().split('T')[0];
+      const nombreArchivo = `respaldo-negocio-${fechaArchivo}.json`;
+      const archivo = new File([blob], nombreArchivo, { type: 'application/json' });
+
+      localStorage.setItem(RESPALDO_ULTIMA_FECHA_KEY, new Date().toISOString());
+      actualizarEstadoRecordatorio();
+
+      if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
+        try {
+          await navigator.share({
+            files: [archivo],
+            title: 'Respaldo de datos del negocio',
+            text: 'Respaldo generado el ' + new Date().toLocaleString()
+          });
+        } catch (err) {
+          // El usuario canceló el cuadro de compartir; no hacer nada más.
+        }
+      } else {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = nombreArchivo;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        alert('📥 Este dispositivo no permite elegir carpeta directamente. El respaldo se descargó a tu carpeta de Descargas.');
+      }
+    }
+
+    // =========================================================
+    // RESTAURAR RESPALDO
+    // =========================================================
+    function leerArchivoRespaldo(evento) {
+      const archivo = evento.target.files[0];
+      if (!archivo) return;
+
+      const lector = new FileReader();
+
+      lector.onload = function (e) {
+        let contenido;
+        try {
+          contenido = JSON.parse(e.target.result);
+        } catch (err) {
+          alert('⚠️ Este archivo no se pudo leer. Asegúrate de elegir un archivo de respaldo válido (.json).');
+          evento.target.value = '';
+          return;
+        }
+
+        if (!contenido || contenido.tipo !== RESPALDO_TIPO || !contenido.datos || typeof contenido.datos !== 'object') {
+          alert('⚠️ Este archivo no parece ser un respaldo generado por este sistema.');
+          evento.target.value = '';
+          return;
+        }
+
+        paqueteRespaldoPendiente = contenido;
+        mostrarResumenRespaldo(contenido);
+        evento.target.value = '';
+      };
+
+      lector.onerror = function () {
+        alert('⚠️ No se pudo leer el archivo.');
+      };
+
+      lector.readAsText(archivo);
+    }
+
+    function mostrarResumenRespaldo(paquete) {
+      const contenedor = document.getElementById('resumenRespaldo');
+      const fecha = paquete.fecha ? new Date(paquete.fecha).toLocaleString() : 'Desconocida';
+
+      let filas = '';
+      RESPALDO_CLAVES.forEach(clave => {
+        const valor = paquete.datos[clave];
+        if (valor === undefined) return;
+
+        let conteo = 'Datos guardados';
+        if (Array.isArray(valor)) conteo = valor.length + ' registro' + (valor.length === 1 ? '' : 's');
+
+        filas += `
+          <div class="flex justify-between border-b border-slate-200 pb-1">
+            <span class="text-slate-600">${RESPALDO_ETIQUETAS[clave] || clave}</span>
+            <span class="font-bold text-slate-800">${conteo}</span>
+          </div>
+        `;
+      });
+
+      contenedor.innerHTML = `
+        <p class="font-bold text-slate-700">Respaldo generado el: ${fecha}</p>
+        <div class="space-y-1 py-1">${filas}</div>
+        <p class="text-red-600 font-bold pt-1">⚠️ Esto reemplazará TODA la información actual de este dispositivo por la de este archivo. No se puede deshacer.</p>
+        <div class="flex gap-2 pt-2">
+          <button onclick="cancelarRestauracion()" class="w-1/2 bg-slate-200 text-slate-700 font-bold py-2.5 rounded-xl">Cancelar</button>
+          <button onclick="confirmarRestauracion()" class="w-1/2 bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 rounded-xl">Restaurar Ahora</button>
+        </div>
+      `;
+
+      contenedor.classList.remove('hidden');
+    }
+
+    function cancelarRestauracion() {
+      paqueteRespaldoPendiente = null;
+      document.getElementById('resumenRespaldo').classList.add('hidden');
+    }
+
+    function confirmarRestauracion() {
+      if (!paqueteRespaldoPendiente) return;
+
+      if (!confirm('¿Seguro que quieres restaurar? Se reemplazará toda la información actual de este dispositivo por la del archivo.')) {
+        return;
+      }
+
+      Object.keys(paqueteRespaldoPendiente.datos).forEach(clave => {
+        const valor = paqueteRespaldoPendiente.datos[clave];
+        localStorage.setItem(clave, typeof valor === 'string' ? valor : JSON.stringify(valor));
+      });
+
+      alert('✅ Respaldo restaurado correctamente. Cierra y vuelve a abrir los demás módulos (Caja, Inventario, etc.) para ver la información actualizada.');
+
+      paqueteRespaldoPendiente = null;
+      document.getElementById('resumenRespaldo').classList.add('hidden');
+      actualizarEstadoRecordatorio();
+    }
+
+    // =========================================================
+    // RECORDATORIO
+    // =========================================================
+    function obtenerConfigRecordatorio() {
+      const data = localStorage.getItem(RESPALDO_CONFIG_RECORDATORIO_KEY);
+      if (!data) return { activo: true, frecuenciaDias: 7 };
+      try {
+        const config = JSON.parse(data);
+        return {
+          activo: config.activo !== false,
+          frecuenciaDias: config.frecuenciaDias || 7
+        };
+      } catch (e) {
+        return { activo: true, frecuenciaDias: 7 };
+      }
+    }
+
+    function cargarConfigRecordatorio() {
+      const config = obtenerConfigRecordatorio();
+      document.getElementById('toggleRecordatorio').checked = config.activo;
+      document.getElementById('selectFrecuencia').value = String(config.frecuenciaDias);
+    }
+
+    function guardarConfigRecordatorio() {
+      const activo = document.getElementById('toggleRecordatorio').checked;
+      const frecuenciaDias = parseInt(document.getElementById('selectFrecuencia').value, 10) || 7;
+      localStorage.setItem(RESPALDO_CONFIG_RECORDATORIO_KEY, JSON.stringify({ activo, frecuenciaDias }));
+      actualizarEstadoRecordatorio();
+    }
+
+    function actualizarEstadoRecordatorio() {
+      const ultima = localStorage.getItem(RESPALDO_ULTIMA_FECHA_KEY);
+      const elFecha = document.getElementById('textoUltimoRespaldo');
+
+      elFecha.textContent = ultima
+        ? 'Último respaldo: ' + new Date(ultima).toLocaleString()
+        : 'Aún no has generado ningún respaldo.';
+
+      const banner = document.getElementById('bannerRecordatorio');
+      const textoBanner = document.getElementById('textoBannerRecordatorio');
+      const config = obtenerConfigRecordatorio();
+
+      if (!config.activo) {
+        banner.classList.add('hidden');
+        return;
+      }
+
+      const diasDesde = ultima ? (Date.now() - new Date(ultima).getTime()) / 86400000 : Infinity;
+
+      if (diasDesde >= config.frecuenciaDias) {
+        textoBanner.textContent = ultima
+          ? `Ya pasaron ${Math.floor(diasDesde)} día(s) desde tu último respaldo. Te recomendamos generar uno nuevo.`
+          : 'Todavía no tienes ningún respaldo generado. Te recomendamos crear uno ahora.';
+        banner.classList.remove('hidden');
+      } else {
+        banner.classList.add('hidden');
+      }
+    }
+  </script>
+
+</body>
+</html>

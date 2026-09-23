@@ -1,0 +1,1755 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Gestión de Usuarios y Accesos - POS</title>
+
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+
+<!-- FontAwesome Iconos -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+<style>
+    input, select {
+        font-size: 16px !important;
+    }
+</style>
+</head>
+
+<body class="bg-slate-100 text-slate-800 min-h-screen pb-24">
+
+<!-- =========================================================
+     MODAL SEGURIDAD ADMINISTRACIÓN
+
+     IMPORTANTE:
+     Comienza OCULTO.
+
+     Solo aparecerá cuando ya exista al menos
+     un usuario registrado.
+     ========================================================= -->
+
+<div id="modalSeguridadAdmin"
+     style="position:fixed; top:0; left:0; width:100%; height:100%;
+     background:#0f172a; z-index:999999; display:none;
+     align-items:center; justify-content:center; font-family:sans-serif;">
+
+  <div style="background:white; padding:24px; border-radius:16px;
+  width:85%; max-width:300px; text-align:center;
+  box-shadow:0 10px 25px rgba(0,0,0,0.5);">
+
+    <div style="font-size:32px; margin-bottom:8px;">🔐</div>
+
+    <h3 style="margin:0 0 6px 0; font-size:16px; color:#1e293b;">
+        Área Exclusiva de Administrador
+    </h3>
+
+    <p style="margin:0 0 14px 0; font-size:11px; color:#64748b;">
+        Los cajeros no tienen acceso a este menú.
+        Ingresa tu PIN de Administrador.
+    </p>
+
+    <input
+        type="password"
+        id="inputPinAdmin"
+        placeholder="••••"
+        maxlength="6"
+        inputmode="numeric"
+        style="width:100%; padding:12px; font-size:22px;
+        text-align:center; border:1px solid #cbd5e1;
+        border-radius:10px; margin-bottom:12px;
+        box-sizing:border-box; letter-spacing:6px;"
+    />
+
+    <button
+        onclick="verificarSoloAdmin()"
+        style="width:100%; background:#7c3aed; color:white;
+        border:none; padding:12px; border-radius:10px;
+        font-weight:bold; font-size:13px; cursor:pointer;"
+    >
+        Verificar Acceso
+    </button>
+
+  </div>
+</div>
+
+
+<script>
+
+/* =========================================================
+   SEGURIDAD DE ADMINISTRACIÓN
+
+   REGLA PRINCIPAL:
+
+   SI NO HAY USUARIOS:
+   → NO SE PIDE PIN
+   → SE PERMITE ENTRAR
+   → SE PUEDE CREAR EL PRIMER ADMINISTRADOR
+
+   SI YA EXISTEN USUARIOS:
+   → SE PIDE PIN
+   → SOLAMENTE ADMINISTRADORES PUEDEN ENTRAR
+   ========================================================= */
+
+window.addEventListener('DOMContentLoaded', () => {
+
+    const modal =
+        document.getElementById('modalSeguridadAdmin');
+
+    const datosUsuarios =
+        localStorage.getItem('pos_db_users');
+
+
+    /* -----------------------------------------------------
+       NO EXISTE LA CLAVE
+       NO HAY USUARIOS
+       ACCESO LIBRE
+       ----------------------------------------------------- */
+
+    if (!datosUsuarios) {
+
+        modal.style.display = 'none';
+
+        return;
+    }
+
+
+    try {
+
+        const usuarios =
+            JSON.parse(datosUsuarios);
+
+
+        /* -------------------------------------------------
+           SI EL ARRAY ESTÁ VACÍO
+           ACCESO LIBRE
+           ------------------------------------------------- */
+
+        if (
+            !Array.isArray(usuarios) ||
+            usuarios.length === 0
+        ) {
+
+            modal.style.display = 'none';
+
+            return;
+        }
+
+
+        /* -------------------------------------------------
+           YA EXISTEN USUARIOS
+
+           Buscamos un administrador.
+           ------------------------------------------------- */
+
+        const existeAdmin =
+            usuarios.some(
+                u =>
+                    u &&
+                    u.rol === 'administrador'
+            );
+
+
+        if (existeAdmin) {
+
+            /*
+             * AQUÍ SE ACTIVA EL PIN.
+             */
+
+            modal.style.display = 'flex';
+
+            setTimeout(() => {
+
+                const input =
+                    document.getElementById(
+                        'inputPinAdmin'
+                    );
+
+                if (input) {
+                    input.focus();
+                }
+
+            }, 100);
+
+        } else {
+
+            /*
+             * Esta situación no debería producirse
+             * mediante las funciones normales del sistema.
+             *
+             * No abrimos Administración sin autorización
+             * cuando ya existen usuarios.
+             */
+
+            modal.style.display = 'none';
+
+            alert(
+                "⚠️ No existe un usuario Administrador registrado. Revisa la configuración de usuarios."
+            );
+        }
+
+    } catch (e) {
+
+        /*
+         * Si la información está dañada y no podemos
+         * determinar los usuarios, NO creamos usuarios
+         * predeterminados.
+         */
+
+        console.error(
+            "Error leyendo usuarios:",
+            e
+        );
+
+        modal.style.display = 'none';
+    }
+
+});
+
+
+/* =========================================================
+   VERIFICAR PIN EXCLUSIVO DE ADMINISTRADOR
+   ========================================================= */
+
+function verificarSoloAdmin() {
+
+    const input =
+        document.getElementById(
+            'inputPinAdmin'
+        );
+
+    const pinIngresado =
+        input.value.trim();
+
+    const datosUsuarios =
+        localStorage.getItem(
+            'pos_db_users'
+        );
+
+
+    /* -----------------------------------------------------
+       SI YA NO EXISTEN USUARIOS:
+       ACCESO LIBRE
+       ----------------------------------------------------- */
+
+    if (!datosUsuarios) {
+
+        document.getElementById(
+            'modalSeguridadAdmin'
+        ).style.display = 'none';
+
+        return;
+    }
+
+
+    let usuarios = [];
+
+
+    try {
+
+        usuarios =
+            JSON.parse(
+                datosUsuarios
+            );
+
+    } catch (e) {
+
+        alert(
+            "⚠️ No se pudo leer la configuración de usuarios."
+        );
+
+        return;
+    }
+
+
+    /* -----------------------------------------------------
+       SI EL ARRAY ESTÁ VACÍO:
+       ACCESO LIBRE
+       ----------------------------------------------------- */
+
+    if (
+        !Array.isArray(usuarios) ||
+        usuarios.length === 0
+    ) {
+
+        document.getElementById(
+            'modalSeguridadAdmin'
+        ).style.display = 'none';
+
+        return;
+    }
+
+
+    /* -----------------------------------------------------
+       BUSCAR ADMINISTRADOR CON EL PIN
+       ----------------------------------------------------- */
+
+    const usuarioValido =
+        usuarios.find(
+            u =>
+                u &&
+                String(u.pin) === String(pinIngresado) &&
+                u.rol === 'administrador'
+        );
+
+
+    if (usuarioValido) {
+
+        /*
+         * PIN CORRECTO Y USUARIO ADMINISTRADOR.
+         */
+
+        document.getElementById(
+            'modalSeguridadAdmin'
+        ).style.display = 'none';
+
+    } else {
+
+        alert(
+            "⛔ Acceso denegado. Este menú está restringido únicamente a Administradores."
+        );
+
+        input.value = "";
+
+        input.focus();
+    }
+}
+
+</script>
+
+
+<!-- =========================================================
+     ENCABEZADO
+     ========================================================= -->
+
+<header class="bg-slate-900 text-white p-4 sticky top-0 z-30 shadow-md">
+
+    <div class="max-w-xl mx-auto flex justify-between items-center">
+
+        <div class="flex items-center gap-2">
+
+            <i class="fa-solid fa-users-gear text-xl text-emerald-400"></i>
+
+            <h1 class="font-bold text-lg">
+                Gestión de Usuarios
+            </h1>
+
+        </div>
+
+    </div>
+
+</header>
+
+
+<main class="max-w-xl mx-auto p-4 space-y-4">
+
+
+<!-- =========================================================
+     FORMULARIO CREAR / EDITAR USUARIO
+     ========================================================= -->
+
+<section class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+
+    <h2 class="font-bold text-slate-800 text-sm flex items-center gap-2 border-b pb-2">
+
+        <i class="fa-solid fa-user-plus text-emerald-600"></i>
+
+        <span id="lblTituloForm">
+            Registrar Nuevo Usuario
+        </span>
+
+    </h2>
+
+
+    <form onsubmit="guardarUsuario(event)" class="space-y-3 text-xs">
+
+        <input
+            type="hidden"
+            id="editIndex"
+            value=""
+        >
+
+
+        <div>
+
+            <label class="block font-bold text-slate-600 mb-1">
+                Nombre del Colaborador
+            </label>
+
+            <input
+                type="text"
+                id="inputNombre"
+                required
+                placeholder="Ej. Juan Pérez"
+                maxlength="60"
+                class="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+            >
+
+        </div>
+
+
+        <div class="grid grid-cols-2 gap-2">
+
+            <div>
+
+                <label class="block font-bold text-slate-600 mb-1">
+                    Rol / Permisos
+                </label>
+
+                <select
+                    id="selectRol"
+                    class="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-bold text-slate-700 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                >
+
+                    <option value="cajero">
+                        Cajero (Ventas)
+                    </option>
+
+                    <option value="administrador">
+                        Administrador (Total)
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            <div>
+
+                <label class="block font-bold text-slate-600 mb-1">
+                    PIN de Acceso (4-6 dígitos)
+                </label>
+
+                <input
+                    type="password"
+                    id="inputPin"
+                    required
+                    placeholder="Ej. 1234"
+                    maxlength="6"
+                    inputmode="numeric"
+                    class="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-mono font-bold text-center tracking-widest focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                >
+
+            </div>
+
+        </div>
+
+
+        <div class="flex gap-2 pt-2">
+
+            <button
+                type="button"
+                onclick="limpiarFormulario()"
+                id="btnCancelarEdicion"
+                class="hidden w-1/3 bg-slate-200 text-slate-700 font-bold py-2.5 rounded-xl"
+            >
+                Cancelar
+            </button>
+
+            <button
+                type="submit"
+                class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow transition active:scale-98"
+            >
+                Guardar Usuario
+            </button>
+
+        </div>
+
+    </form>
+
+</section>
+
+
+<!-- =========================================================
+     NUEVO
+     MÓDULOS BLOQUEADOS POR ADMINISTRADOR
+
+     Permite al Administrador elegir individualmente qué
+     módulos deben pedir su PIN, en vez de bloquear todo
+     automáticamente al crear la cuenta de Administrador.
+
+     Esta configuración es GLOBAL (aplica sin importar cuál
+     Administrador la haya configurado) y NO afecta a Caja,
+     que siempre pide PIN de Cajero o Administrador cuando
+     existen usuarios registrados.
+     ========================================================= -->
+
+<section class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+
+    <h2 class="font-bold text-slate-800 text-sm flex items-center gap-2 border-b pb-2">
+
+        <i class="fa-solid fa-lock text-purple-600"></i>
+
+        Módulos Bloqueados por Administrador
+
+    </h2>
+
+    <p class="text-[11px] text-slate-500">
+
+        Marca los módulos que deben pedir tu PIN de Administrador
+        para poder entrar. Los módulos que dejes sin marcar
+        quedarán de acceso libre para todos, aunque exista un
+        Administrador registrado. Caja no aparece aquí porque
+        siempre exige un código de Cajero o Administrador cuando
+        hay usuarios registrados.
+
+    </p>
+
+    <div
+        id="listaModulosBloqueados"
+        class="space-y-2 text-xs"
+    >
+        <!-- Render dinámico -->
+    </div>
+
+    <button
+        type="button"
+        onclick="guardarConfigModulos()"
+        class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2.5 rounded-xl shadow transition active:scale-98"
+    >
+        Guardar Configuración de Bloqueo
+    </button>
+
+</section>
+
+
+<!-- =========================================================
+     LISTA DE USUARIOS REGISTRADOS
+     ========================================================= -->
+
+<section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-3">
+
+    <div class="flex justify-between items-center border-b pb-2">
+
+        <h2 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+
+            <i class="fa-solid fa-id-card text-emerald-600"></i>
+
+            Personal Autorizado
+
+        </h2>
+
+
+        <button
+            type="button"
+            onclick="eliminarTodosLosUsuarios()"
+            class="bg-red-50 hover:bg-red-100 text-red-600 font-bold px-2.5 py-1 rounded-lg text-[11px] transition"
+        >
+
+            <i class="fa-solid fa-trash-can mr-1"></i>
+
+            Borrar Todos
+
+        </button>
+
+    </div>
+
+
+    <div
+        id="listaUsuarios"
+        class="space-y-2"
+    >
+        <!-- Render dinámico -->
+    </div>
+
+</section>
+
+
+</main>
+
+
+<!-- =========================================================
+     MODAL DE ACCESO RESTRINGIDO PARA OTROS MENÚS
+     ========================================================= -->
+
+<div
+    id="modalPinAcceso"
+    class="fixed inset-0 bg-slate-950/90 z-50 hidden flex items-center justify-center p-4"
+>
+
+    <div class="bg-white rounded-2xl p-6 w-full max-w-sm text-center shadow-2xl space-y-4 border border-slate-200">
+
+        <div class="w-14 h-14 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto text-2xl">
+
+            <i class="fa-solid fa-lock"></i>
+
+        </div>
+
+
+        <div>
+
+            <h3
+                class="font-bold text-slate-800 text-base"
+                id="modalPinTitulo"
+            >
+                Acceso Restringido
+            </h3>
+
+            <p
+                class="text-xs text-slate-500 mt-1"
+                id="modalPinSub"
+            >
+                Introduce tu clave o PIN asignado para continuar.
+            </p>
+
+        </div>
+
+
+        <input
+            type="password"
+            id="inputPinIngresado"
+            placeholder="••••"
+            maxlength="6"
+            inputmode="numeric"
+            class="w-full bg-slate-50 border border-slate-300 rounded-xl py-3 px-4 text-center text-xl font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-emerald-500"
+        >
+
+
+        <div class="flex gap-2">
+
+            <button
+                type="button"
+                onclick="cerrarModalPin()"
+                class="w-1/2 bg-slate-200 text-slate-700 font-bold py-2.5 rounded-xl text-xs"
+            >
+                Cancelar
+            </button>
+
+
+            <button
+                type="button"
+                onclick="verificarAccesoPin()"
+                class="w-1/2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl shadow text-xs"
+            >
+                Verificar
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+     JAVASCRIPT DE CONTROL DE USUARIOS Y ACCESOS
+     ========================================================= -->
+
+<script>
+
+const USERS_DB_KEY = 'pos_db_users';
+
+let usuarios = [];
+
+let callbackAccesoExitoso = null;
+
+
+/* =========================================================
+   NUEVO
+   MÓDULOS BLOQUEADOS POR ADMINISTRADOR (CONFIGURACIÓN GLOBAL)
+
+   Por defecto (si no existe la clave todavía en localStorage)
+   TODOS los módulos quedan bloqueados = true, para no cambiar
+   el comportamiento actual de ningún sistema ya instalado
+   hasta que el Administrador entre a esta pantalla y decida
+   desbloquear alguno.
+   ========================================================= */
+
+const MODULOS_BLOQUEADOS_KEY = 'pos_db_modulos_bloqueados';
+
+const MODULOS_CONFIGURABLES = [
+    { clave: 'agregarProductos', nombre: 'Agregar Productos' },
+    { clave: 'inventario', nombre: 'Inventario' },
+    { clave: 'merma', nombre: 'Merma' },
+    { clave: 'proveedores', nombre: 'Directorio de Proveedores' },
+    { clave: 'gastos', nombre: 'Gestión de Gastos' },
+    { clave: 'respaldo', nombre: 'Respaldo y Restauración' }
+];
+
+
+/* =========================================================
+   CARGAR AL INICIAR
+
+   IMPORTANTE:
+   YA NO EXISTE inicializarUsuariosPorDefecto()
+
+   NO SE CREA NINGÚN USUARIO AUTOMÁTICAMENTE.
+   ========================================================= */
+
+document.addEventListener(
+    "DOMContentLoaded",
+    () => {
+
+        cargarUsuarios();
+
+        actualizarEstadoPrimerUsuario();
+
+        cargarConfigModulos();
+
+    }
+);
+
+
+/* =========================================================
+   NUEVO
+   OBTENER CONFIGURACIÓN ACTUAL DE MÓDULOS BLOQUEADOS
+   ========================================================= */
+
+function obtenerConfigModulos() {
+
+    const data =
+        localStorage.getItem(
+            MODULOS_BLOQUEADOS_KEY
+        );
+
+    if (!data) {
+        return {};
+    }
+
+    try {
+
+        const config =
+            JSON.parse(data);
+
+        return (
+            config &&
+            typeof config === 'object' &&
+            !Array.isArray(config)
+        ) ? config : {};
+
+    } catch (e) {
+
+        return {};
+    }
+}
+
+
+/* =========================================================
+   NUEVO
+   RENDERIZAR CHECKBOXES DE MÓDULOS BLOQUEADOS
+   ========================================================= */
+
+function cargarConfigModulos() {
+
+    const contenedor =
+        document.getElementById(
+            'listaModulosBloqueados'
+        );
+
+    if (!contenedor) {
+        return;
+    }
+
+    const config =
+        obtenerConfigModulos();
+
+    contenedor.innerHTML = '';
+
+    MODULOS_CONFIGURABLES.forEach(
+        modulo => {
+
+            /*
+             * Sin configuración previa para este módulo,
+             * el valor por defecto es BLOQUEADO (true),
+             * igual que el comportamiento original.
+             */
+
+            const bloqueado =
+                config[modulo.clave] !== false;
+
+            const fila =
+                document.createElement('label');
+
+            fila.className =
+                "flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl p-2.5 cursor-pointer";
+
+            fila.innerHTML = `
+                <span class="font-semibold text-slate-700">
+                    ${escaparHTML(modulo.nombre)}
+                </span>
+                <input
+                    type="checkbox"
+                    data-modulo="${modulo.clave}"
+                    class="w-5 h-5 accent-purple-600"
+                    ${bloqueado ? 'checked' : ''}
+                >
+            `;
+
+            contenedor.appendChild(fila);
+
+        }
+    );
+}
+
+
+/* =========================================================
+   NUEVO
+   GUARDAR CONFIGURACIÓN DE MÓDULOS BLOQUEADOS
+   ========================================================= */
+
+function guardarConfigModulos() {
+
+    const checkboxes =
+        document.querySelectorAll(
+            '#listaModulosBloqueados input[type="checkbox"]'
+        );
+
+    const nuevaConfig = {};
+
+    checkboxes.forEach(
+        cb => {
+
+            nuevaConfig[
+                cb.getAttribute('data-modulo')
+            ] = cb.checked;
+
+        }
+    );
+
+    localStorage.setItem(
+        MODULOS_BLOQUEADOS_KEY,
+        JSON.stringify(nuevaConfig)
+    );
+
+    alert(
+        "✅ Configuración de módulos bloqueados guardada correctamente."
+    );
+}
+
+
+/* =========================================================
+   CARGAR USUARIOS
+   ========================================================= */
+
+function cargarUsuarios() {
+
+    const data =
+        localStorage.getItem(
+            USERS_DB_KEY
+        );
+
+
+    if (!data) {
+
+        usuarios = [];
+
+        renderizarUsuarios();
+
+        actualizarEstadoPrimerUsuario();
+
+        return;
+    }
+
+
+    try {
+
+        const datos =
+            JSON.parse(data);
+
+
+        if (Array.isArray(datos)) {
+
+            usuarios = datos;
+
+        } else {
+
+            usuarios = [];
+
+        }
+
+    } catch (error) {
+
+        console.error(
+            "Error al cargar usuarios:",
+            error
+        );
+
+        usuarios = [];
+    }
+
+
+    renderizarUsuarios();
+
+    actualizarEstadoPrimerUsuario();
+}
+
+
+/* =========================================================
+   ACTUALIZAR ESTADO DEL PRIMER USUARIO
+
+   No cambia el diseño.
+
+   Solo obliga a que el PRIMER usuario sea Administrador.
+   ========================================================= */
+
+function actualizarEstadoPrimerUsuario() {
+
+    const selectRol =
+        document.getElementById(
+            'selectRol'
+        );
+
+    const indexEdit =
+        document.getElementById(
+            'editIndex'
+        );
+
+
+    if (!selectRol) {
+        return;
+    }
+
+
+    /*
+     * Si no existen usuarios y NO estamos editando,
+     * el primer usuario debe ser administrador.
+     */
+
+    if (
+        usuarios.length === 0 &&
+        indexEdit.value === ""
+    ) {
+
+        selectRol.value =
+            "administrador";
+
+        selectRol.disabled = true;
+
+    } else {
+
+        selectRol.disabled = false;
+    }
+}
+
+
+/* =========================================================
+   RENDERIZAR USUARIOS
+   ========================================================= */
+
+function renderizarUsuarios() {
+
+    const contenedor =
+        document.getElementById(
+            'listaUsuarios'
+        );
+
+
+    if (usuarios.length === 0) {
+
+        contenedor.innerHTML = `
+
+            <p class="text-center py-4 text-xs text-slate-400">
+
+                No hay usuarios registrados
+                (Acceso libre).
+
+            </p>
+
+        `;
+
+        return;
+    }
+
+
+    contenedor.innerHTML = '';
+
+
+    usuarios.forEach(
+        (usr, index) => {
+
+            const esAdmin =
+                usr.rol === 'administrador';
+
+
+            const div =
+                document.createElement('div');
+
+
+            div.className =
+                "flex justify-between items-center bg-slate-50 border border-slate-200 p-3 rounded-xl text-xs";
+
+
+            div.innerHTML = `
+
+                <div class="flex items-center gap-2.5">
+
+                    <div class="w-9 h-9 rounded-full ${
+                        esAdmin
+                        ? 'bg-purple-100 text-purple-600'
+                        : 'bg-emerald-100 text-emerald-600'
+                    } flex items-center justify-center font-bold">
+
+                        <i class="fa-solid ${
+                            esAdmin
+                            ? 'fa-user-shield'
+                            : 'fa-user'
+                        }"></i>
+
+                    </div>
+
+
+                    <div>
+
+                        <p class="font-bold text-slate-800">
+
+                            ${escaparHTML(usr.nombre)}
+
+                        </p>
+
+                        <p class="text-[10px] text-slate-500 uppercase font-semibold">
+
+                            ${usr.rol} • PIN: ••••
+
+                        </p>
+
+                    </div>
+
+                </div>
+
+
+                <div class="flex gap-1.5">
+
+                    <button
+                        onclick="editarUsuario(${index})"
+                        class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-2.5 py-1.5 rounded-lg font-bold"
+                    >
+
+                        <i class="fa-solid fa-pen"></i>
+
+                    </button>
+
+
+                    <button
+                        onclick="eliminarUsuario(${index})"
+                        class="bg-red-100 hover:bg-red-200 text-red-600 px-2.5 py-1.5 rounded-lg font-bold"
+                    >
+
+                        <i class="fa-solid fa-trash"></i>
+
+                    </button>
+
+                </div>
+
+            `;
+
+
+            contenedor.appendChild(div);
+
+        }
+    );
+}
+
+
+/* =========================================================
+   GUARDAR USUARIO
+
+   ESTA FUNCIÓN MANTIENE EL FUNCIONAMIENTO ORIGINAL.
+
+   CORRECCIONES:
+   - Sin usuarios → primer usuario Administrador.
+   - Usuarios posteriores → Cajero o Administrador.
+   - Valida PIN de 4-6 dígitos.
+   - No crea usuarios automáticamente.
+   ========================================================= */
+
+function guardarUsuario(e) {
+
+    e.preventDefault();
+
+
+    const indexEdit =
+        document.getElementById(
+            'editIndex'
+        ).value;
+
+
+    const nombre =
+        document.getElementById(
+            'inputNombre'
+        ).value.trim();
+
+
+    const rol =
+        document.getElementById(
+            'selectRol'
+        ).value;
+
+
+    const pin =
+        document.getElementById(
+            'inputPin'
+        ).value.trim();
+
+
+    /* -----------------------------------------------------
+       VALIDAR NOMBRE Y PIN
+       ----------------------------------------------------- */
+
+    if (!nombre || !pin) {
+
+        alert(
+            "⚠️ Completa todos los campos obligatorios."
+        );
+
+        return;
+    }
+
+
+    /* -----------------------------------------------------
+       PIN DE 4 A 6 DÍGITOS
+       ----------------------------------------------------- */
+
+    if (!/^\d{4,6}$/.test(pin)) {
+
+        alert(
+            "⚠️ El PIN debe contener únicamente números y tener entre 4 y 6 dígitos."
+        );
+
+        return;
+    }
+
+
+    /*
+     * Recargar los datos actuales antes de guardar.
+     */
+
+    cargarUsuarios();
+
+
+    /* -----------------------------------------------------
+       PRIMER USUARIO
+       ----------------------------------------------------- */
+
+    if (
+        usuarios.length === 0 &&
+        indexEdit === ""
+    ) {
+
+        if (rol !== "administrador") {
+
+            alert(
+                "⚠️ El primer usuario debe ser Administrador."
+            );
+
+            document.getElementById(
+                'selectRol'
+            ).value = "administrador";
+
+            return;
+        }
+    }
+
+
+    /* -----------------------------------------------------
+       VALIDAR PIN DUPLICADO
+       ----------------------------------------------------- */
+
+    const pinDuplicado =
+        usuarios.some(
+            (usr, index) => {
+
+                /*
+                 * Cuando estamos editando,
+                 * no debemos comparar contra
+                 * el propio usuario.
+                 */
+
+                if (
+                    indexEdit !== "" &&
+                    Number(index) === Number(indexEdit)
+                ) {
+
+                    return false;
+                }
+
+
+                return String(usr.pin) ===
+                    String(pin);
+
+            }
+        );
+
+
+    if (pinDuplicado) {
+
+        alert(
+            "⚠️ Ese PIN ya está asignado a otro usuario. Utiliza un PIN diferente."
+        );
+
+        return;
+    }
+
+
+    /* -----------------------------------------------------
+       EDITAR USUARIO
+       ----------------------------------------------------- */
+
+    if (indexEdit !== "") {
+
+        /*
+         * Evitar eliminar accidentalmente
+         * el último administrador.
+         */
+
+        const usuarioActual =
+            usuarios[indexEdit];
+
+
+        if (
+            usuarioActual &&
+            usuarioActual.rol === "administrador" &&
+            rol !== "administrador"
+        ) {
+
+            const cantidadAdministradores =
+                usuarios.filter(
+                    u =>
+                        u.rol ===
+                        "administrador"
+                ).length;
+
+
+            if (
+                cantidadAdministradores === 1
+            ) {
+
+                alert(
+                    "⚠️ No puedes cambiar al último Administrador a Cajero. Debe existir al menos un Administrador."
+                );
+
+                return;
+            }
+        }
+
+
+        usuarios[indexEdit].nombre =
+            nombre;
+
+        usuarios[indexEdit].rol =
+            rol;
+
+        usuarios[indexEdit].pin =
+            pin;
+
+    } else {
+
+        /* -------------------------------------------------
+           CREAR NUEVO USUARIO
+           ------------------------------------------------- */
+
+        usuarios.push({
+
+            id:
+                Date.now(),
+
+            nombre:
+                nombre,
+
+            rol:
+                rol,
+
+            pin:
+                pin
+
+        });
+
+    }
+
+
+    /* -----------------------------------------------------
+       GUARDAR EN LA MISMA BASE ORIGINAL
+       ----------------------------------------------------- */
+
+    localStorage.setItem(
+        USERS_DB_KEY,
+        JSON.stringify(usuarios)
+    );
+
+
+    /* -----------------------------------------------------
+       LIMPIAR Y ACTUALIZAR
+       ----------------------------------------------------- */
+
+    limpiarFormulario();
+
+    cargarUsuarios();
+
+
+    alert(
+        "✅ Usuario guardado correctamente."
+    );
+}
+
+
+/* =========================================================
+   EDITAR USUARIO
+   ========================================================= */
+
+function editarUsuario(index) {
+
+    const usr =
+        usuarios[index];
+
+
+    if (!usr) {
+        return;
+    }
+
+
+    document.getElementById(
+        'editIndex'
+    ).value = index;
+
+
+    document.getElementById(
+        'inputNombre'
+    ).value =
+        usr.nombre;
+
+
+    document.getElementById(
+        'selectRol'
+    ).value =
+        usr.rol;
+
+
+    document.getElementById(
+        'inputPin'
+    ).value =
+        usr.pin;
+
+
+    document.getElementById(
+        'lblTituloForm'
+    ).innerText =
+        "Editar Usuario";
+
+
+    document.getElementById(
+        'btnCancelarEdicion'
+    ).classList.remove(
+        'hidden'
+    );
+
+
+    /*
+     * Al editar ya no estamos creando
+     * el primer usuario.
+     */
+
+    document.getElementById(
+        'selectRol'
+    ).disabled = false;
+
+
+    window.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+    });
+}
+
+
+/* =========================================================
+   ELIMINAR USUARIO
+   ========================================================= */
+
+function eliminarUsuario(index) {
+
+    const usuario =
+        usuarios[index];
+
+
+    if (!usuario) {
+        return;
+    }
+
+
+    /*
+     * Evitar eliminar el último Administrador
+     * si existen otros usuarios.
+     */
+
+    if (
+        usuario.rol ===
+        "administrador"
+    ) {
+
+        const administradores =
+            usuarios.filter(
+                u =>
+                    u.rol ===
+                    "administrador"
+            );
+
+
+        if (
+            administradores.length === 1 &&
+            usuarios.length > 1
+        ) {
+
+            alert(
+                "⚠️ No puedes eliminar al último Administrador mientras existan otros usuarios."
+            );
+
+            return;
+        }
+    }
+
+
+    if (
+        confirm(
+            "¿Estás seguro de eliminar a este usuario?"
+        )
+    ) {
+
+        usuarios.splice(
+            index,
+            1
+        );
+
+
+        /*
+         * Si era el último usuario,
+         * eliminamos completamente la clave.
+         *
+         * De esta manera todos los módulos
+         * vuelven al modo sin PIN.
+         */
+
+        if (
+            usuarios.length === 0
+        ) {
+
+            localStorage.removeItem(
+                USERS_DB_KEY
+            );
+
+        } else {
+
+            localStorage.setItem(
+                USERS_DB_KEY,
+                JSON.stringify(usuarios)
+            );
+        }
+
+
+        cargarUsuarios();
+    }
+}
+
+
+/* =========================================================
+   ELIMINAR TODOS LOS USUARIOS
+   ========================================================= */
+
+function eliminarTodosLosUsuarios() {
+
+    if (
+        confirm(
+            "¿Estás seguro de eliminar TODOS los usuarios? El sistema se quedará sin claves y permitirá el acceso libre hasta que registres nuevos usuarios a tu gusto."
+        )
+    ) {
+
+        localStorage.removeItem(
+            USERS_DB_KEY
+        );
+
+
+        usuarios = [];
+
+
+        cargarUsuarios();
+
+
+        /*
+         * Si el módulo de Administración estaba
+         * mostrando el PIN, lo ocultamos.
+         */
+
+        const modal =
+            document.getElementById(
+                'modalSeguridadAdmin'
+            );
+
+
+        if (modal) {
+
+            modal.style.display =
+                'none';
+
+        }
+
+
+        alert(
+            "✅ Todos los usuarios han sido eliminados. El sistema ahora permite acceso libre."
+        );
+    }
+}
+
+
+/* =========================================================
+   LIMPIAR FORMULARIO
+   ========================================================= */
+
+function limpiarFormulario() {
+
+    document.getElementById(
+        'editIndex'
+    ).value = "";
+
+
+    document.getElementById(
+        'inputNombre'
+    ).value = "";
+
+
+    document.getElementById(
+        'selectRol'
+    ).value = "cajero";
+
+
+    document.getElementById(
+        'inputPin'
+    ).value = "";
+
+
+    document.getElementById(
+        'lblTituloForm'
+    ).innerText =
+        "Registrar Nuevo Usuario";
+
+
+    document.getElementById(
+        'btnCancelarEdicion'
+    ).classList.add(
+        'hidden'
+    );
+
+
+    /*
+     * Volver a aplicar la regla del primer usuario.
+     */
+
+    actualizarEstadoPrimerUsuario();
+}
+
+
+/* =========================================================
+   CONTROL DE ACCESOS POR PIN
+   ========================================================= */
+
+function solicitarAccesoPin(
+    rolRequerido,
+    nombreMenu,
+    funcionAccion
+) {
+
+    cargarUsuarios();
+
+
+    /* -----------------------------------------------------
+       SI NO HAY USUARIOS:
+       ACCESO DIRECTO.
+       NO SE PIDE PIN.
+       ----------------------------------------------------- */
+
+    if (
+        usuarios.length === 0
+    ) {
+
+        if (funcionAccion) {
+
+            funcionAccion({
+                rol: 'administrador',
+                nombre: 'Acceso Libre'
+            });
+
+        }
+
+        return;
+    }
+
+
+    callbackAccesoExitoso =
+        funcionAccion;
+
+
+    document.getElementById(
+        'modalPinTitulo'
+    ).innerText =
+        `Acceso: ${nombreMenu}`;
+
+
+    document.getElementById(
+        'modalPinSub'
+    ).innerText =
+        `Requiere autorización de nivel: ${rolRequerido.toUpperCase()}`;
+
+
+    document.getElementById(
+        'inputPinIngresado'
+    ).value = "";
+
+
+    document.getElementById(
+        'modalPinAcceso'
+    ).classList.remove(
+        'hidden'
+    );
+
+
+    document.getElementById(
+        'modalPinAcceso'
+    ).classList.add(
+        'flex'
+    );
+
+
+    setTimeout(
+        () =>
+            document
+                .getElementById(
+                    'inputPinIngresado'
+                )
+                .focus(),
+        100
+    );
+}
+
+
+/* =========================================================
+   CERRAR MODAL PIN
+   ========================================================= */
+
+function cerrarModalPin() {
+
+    document.getElementById(
+        'modalPinAcceso'
+    ).classList.add(
+        'hidden'
+    );
+
+
+    document.getElementById(
+        'modalPinAcceso'
+    ).classList.remove(
+        'flex'
+    );
+
+
+    callbackAccesoExitoso =
+        null;
+}
+
+
+/* =========================================================
+   VERIFICAR PIN PARA OTROS MÓDULOS
+   ========================================================= */
+
+function verificarAccesoPin() {
+
+    const pinIngresado =
+        document.getElementById(
+            'inputPinIngresado'
+        ).value.trim();
+
+
+    cargarUsuarios();
+
+
+    /*
+     * SI NO HAY USUARIOS:
+     * NO SE PIDE PIN.
+     */
+
+    if (
+        usuarios.length === 0
+    ) {
+
+        cerrarModalPin();
+
+        if (callbackAccesoExitoso) {
+
+            callbackAccesoExitoso({
+                rol: 'administrador',
+                nombre: 'Acceso Libre'
+            });
+
+        }
+
+        return;
+    }
+
+
+    const usuarioEncontrado =
+        usuarios.find(
+            u =>
+                String(u.pin) ===
+                String(pinIngresado)
+        );
+
+
+    if (!usuarioEncontrado) {
+
+        alert(
+            "❌ PIN incorrecto. Acceso denegado."
+        );
+
+
+        document.getElementById(
+            'inputPinIngresado'
+        ).value = "";
+
+
+        return;
+    }
+
+
+    cerrarModalPin();
+
+
+    if (
+        callbackAccesoExitoso
+    ) {
+
+        callbackAccesoExitoso(
+            usuarioEncontrado
+        );
+    }
+}
+
+
+/* =========================================================
+   PROTECCIÓN BÁSICA CONTRA HTML INYECTADO
+   ========================================================= */
+
+function escaparHTML(texto) {
+
+    return String(texto)
+        .replace(
+            /&/g,
+            "&"
+        )
+        .replace(
+            /</g,
+            "<"
+        )
+        .replace(
+            />/g,
+            ">"
+        )
+        .replace(
+            /"/g,
+            """
+        )
+        .replace(
+            /'/g,
+            "'"
+        );
+}
+
+</script>
+
+</body>
+</html>
